@@ -8,10 +8,22 @@ void playWebAudio(String path, double volume, double playbackRate) {
   try {
     // Use absolute path for web
     final absolutePath = path.startsWith('/') ? path : '/$path';
+    print('Playing web audio: $absolutePath, volume: $volume, rate: $playbackRate');
     final audio = html.AudioElement(absolutePath);
     audio.volume = volume;
     audio.playbackRate = playbackRate;
-    audio.play().catchError((e) {
+
+    audio.onCanPlay.listen((_) {
+      print('Audio can play: $absolutePath');
+    });
+
+    audio.onError.listen((e) {
+      print('Audio element error: ${audio.error?.code} - ${audio.error?.message}');
+    });
+
+    audio.play().then((_) {
+      print('Audio playing successfully: $absolutePath');
+    }).catchError((e) {
       print('Web audio play error: $e');
     });
   } catch (e) {
