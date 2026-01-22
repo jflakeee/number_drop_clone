@@ -3,8 +3,8 @@ import 'package:audioplayers/audioplayers.dart';
 
 /// Service for playing game sounds
 class AudioService {
-  // Use OGG for web (better compatibility), MP3 for mobile
-  static String get _audioExt => kIsWeb ? 'ogg' : 'mp3';
+  // Use WAV for web (best compatibility), MP3 for mobile
+  static String get _audioExt => kIsWeb ? 'wav' : 'mp3';
   static AudioService? _instance;
   static AudioService get instance {
     _instance ??= AudioService._();
