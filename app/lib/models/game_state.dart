@@ -33,6 +33,7 @@ class GameState extends ChangeNotifier {
   bool _isMerging = false;
   Set<String> _mergingBlockIds = {};
   List<MergeAnimationData> _mergeAnimations = [];
+  DroppingBlockData? _droppingBlock; // For below-merge gravity animation
 
   // Target system
   int _currentTargetIndex = 0;
@@ -60,6 +61,7 @@ class GameState extends ChangeNotifier {
   bool get isMerging => _isMerging;
   Set<String> get mergingBlockIds => _mergingBlockIds;
   List<MergeAnimationData> get mergeAnimations => _mergeAnimations;
+  DroppingBlockData? get droppingBlock => _droppingBlock;
 
   int get currentTarget =>
       _currentTargetIndex < GameConstants.targetBlocks.length
@@ -84,6 +86,7 @@ class GameState extends ChangeNotifier {
     _isMerging = false;
     _mergingBlockIds = {};
     _mergeAnimations = [];
+    _droppingBlock = null;
     _currentTargetIndex = 0;
     _canUndo = false;
     _previousState = null;
@@ -243,12 +246,10 @@ class GameState extends ChangeNotifier {
         }
       }
 
-      // Add below blocks (move up halfway, then disappear)
+      // Add below blocks (move up halfway with magnet effect)
       for (final pos in belowBlocks) {
         final movingBlock = _board[pos.row][pos.column];
         if (movingBlock != null) {
-          // Target is halfway between the block's position and the target
-          final halfwayRow = (pos.row + targetRow) / 2;
           _mergeAnimations.add(MergeAnimationData(
             id: movingBlock.id,
             value: movingBlock.value,
@@ -269,10 +270,27 @@ class GameState extends ChangeNotifier {
         }
       }
 
-      // For below merges, update the target block value immediately
-      // (it will show the merged value while falling)
+      // For below merges, set up dropping block animation
+      // The dropped block falls with gravity while below block rises with magnet effect
       if (belowBlocks.isNotEmpty) {
-        _board[targetRow][targetColumn] = block.copyWith(value: newValue);
+        // Find the lowest below block - this is where the merged block will ultimately land
+        final lowestBelowRow = belowBlocks.map((p) => p.row).reduce((a, b) => a > b ? a : b);
+
+        // Meeting point is exactly between the dropped block and the below block (as fraction)
+        final meetRowFraction = (targetRow + lowestBelowRow) / 2.0;
+
+        _droppingBlock = DroppingBlockData(
+          id: block.id,
+          value: block.value,
+          mergedValue: newValue,
+          startRow: targetRow,
+          meetRowFraction: meetRowFraction,
+          belowBlockRow: lowestBelowRow,
+          column: targetColumn,
+        );
+
+        // Remove the dropped block from board during animation
+        _board[targetRow][targetColumn] = null;
       }
 
       notifyListeners();
@@ -284,8 +302,25 @@ class GameState extends ChangeNotifier {
       _isMerging = false;
       _mergeAnimations = [];
 
-      // Remove the target block
-      _board[targetRow][targetColumn] = null;
+      // For below-merge, place the merged block at belowBlockRow first
+      // so it's visible immediately when animation ends
+      final wasBelowMerge = _droppingBlock != null;
+      final belowBlockRow = _droppingBlock?.belowBlockRow ?? targetRow;
+      _droppingBlock = null;
+
+      // Remove the target block (if it exists - may have been removed for below-merge)
+      if (_board[targetRow][targetColumn] != null) {
+        _board[targetRow][targetColumn] = null;
+      }
+
+      // For below-merge, place merged block at belowBlockRow first
+      if (wasBelowMerge) {
+        _board[belowBlockRow][targetColumn] = Block(
+          value: newValue,
+          row: belowBlockRow,
+          column: targetColumn,
+        );
+      }
 
       notifyListeners();
 
@@ -298,17 +333,31 @@ class GameState extends ChangeNotifier {
       // Wait for gravity animation
       await Future.delayed(Duration(milliseconds: GameConstants.gravityDuration));
 
-      // Find landing position for merged block
-      int landingRow = _findLandingRow(targetColumn);
-      if (landingRow < 0) landingRow = 0;
+      // Find where the merged block is after gravity
+      int actualLandingRow;
+      if (wasBelowMerge) {
+        // For below-merge, find where the block ended up after gravity
+        actualLandingRow = -1;
+        for (int r = GameConstants.rows - 1; r >= 0; r--) {
+          if (_board[r][targetColumn]?.value == newValue) {
+            actualLandingRow = r;
+            break;
+          }
+        }
+        if (actualLandingRow < 0) actualLandingRow = belowBlockRow;
+      } else {
+        // For non-below-merge, place the merged block at landing position
+        int landingRow = _findLandingRow(targetColumn);
+        if (landingRow < 0) landingRow = 0;
 
-      // Place merged block at the landing position
-      final newBlock = Block(
-        value: newValue,
-        row: landingRow,
-        column: targetColumn,
-      );
-      _board[landingRow][targetColumn] = newBlock;
+        final newBlock = Block(
+          value: newValue,
+          row: landingRow,
+          column: targetColumn,
+        );
+        _board[landingRow][targetColumn] = newBlock;
+        actualLandingRow = landingRow;
+      }
 
       notifyListeners();
 
@@ -316,7 +365,7 @@ class GameState extends ChangeNotifier {
       await Future.delayed(const Duration(milliseconds: 50));
 
       // Recursively check for more merges at the new position
-      await _checkAndMerge(landingRow, targetColumn);
+      await _checkAndMerge(actualLandingRow, targetColumn);
 
       // Also check adjacent columns for chain reactions
       for (final col in affectedColumns) {
@@ -515,5 +564,26 @@ class MergeAnimationData {
     required this.toColumn,
     this.isBelowMerge = false,
     this.mergedValue,
+  });
+}
+
+/// Data for the dropping block during below-merge animation
+class DroppingBlockData {
+  final String id;
+  final int value;
+  final int mergedValue;
+  final int startRow; // Where the block was dropped
+  final double meetRowFraction; // Where blocks meet (midpoint as fraction)
+  final int belowBlockRow; // Row of the below block (for reference)
+  final int column;
+
+  DroppingBlockData({
+    required this.id,
+    required this.value,
+    required this.mergedValue,
+    required this.startRow,
+    required this.meetRowFraction,
+    required this.belowBlockRow,
+    required this.column,
   });
 }

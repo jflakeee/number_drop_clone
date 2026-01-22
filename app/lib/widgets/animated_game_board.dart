@@ -4,6 +4,7 @@ import '../config/colors.dart';
 import '../config/constants.dart';
 import '../models/block.dart';
 import '../models/game_state.dart';
+import '../services/audio_service.dart';
 import 'animated_block_widget.dart';
 import 'score_popup.dart';
 
@@ -67,8 +68,24 @@ class _AnimatedGameBoardState extends State<AnimatedGameBoard>
       _droppingColumn = column;
     });
 
+    // Play drop sound
+    AudioService.instance.playDrop();
+
+    final prevScore = gameState.score;
+    final prevCombo = gameState.comboCount;
+
     // Drop the block immediately (no animation)
     await gameState.dropBlock(column);
+
+    // Play merge sound if score changed (meaning merge happened)
+    if (gameState.score > prevScore) {
+      AudioService.instance.playMerge();
+    }
+
+    // Play combo sound if combo increased
+    if (gameState.comboCount > prevCombo && gameState.comboCount > 1) {
+      AudioService.instance.playCombo(gameState.comboCount);
+    }
 
     setState(() {
       _droppingColumn = null;
@@ -101,7 +118,28 @@ class _AnimatedGameBoardState extends State<AnimatedGameBoard>
             final cellHeight = boardHeight / GameConstants.rows;
             final cellSize = cellWidth < cellHeight ? cellWidth : cellHeight;
 
-            return GestureDetector(
+            return MouseRegion(
+              onHover: (event) {
+                if (widget.hammerMode) return;
+                if (gameState.isGameOver || gameState.isPaused) return;
+
+                final column = (event.localPosition.dx / cellWidth).floor();
+                if (column >= 0 && column < GameConstants.columns) {
+                  if (_hoveredColumn != column) {
+                    setState(() {
+                      _hoveredColumn = column;
+                    });
+                  }
+                }
+              },
+              onExit: (_) {
+                if (_hoveredColumn != null) {
+                  setState(() {
+                    _hoveredColumn = null;
+                  });
+                }
+              },
+              child: GestureDetector(
               onTapDown: (details) {
                 if (gameState.isGameOver || gameState.isPaused) return;
                 if (_droppingColumn != null) return; // 떨어지는 중이면 무시
@@ -207,6 +245,7 @@ class _AnimatedGameBoardState extends State<AnimatedGameBoard>
                   ],
                 ),
               ),
+            ),
             );
           },
         );
@@ -368,86 +407,190 @@ class _AnimatedGameBoardState extends State<AnimatedGameBoard>
       return [];
     }
 
-    return gameState.mergeAnimations.map((anim) {
-      // For below merges: move up halfway, then fade out
-      if (anim.isBelowMerge) {
-        return TweenAnimationBuilder<double>(
-          key: ValueKey('merge_below_${anim.id}'),
+    final widgets = <Widget>[];
+
+    // Add dropping block animation for below-merge (gravity effect)
+    if (gameState.droppingBlock != null) {
+      final drop = gameState.droppingBlock!;
+      widgets.add(
+        TweenAnimationBuilder<double>(
+          key: ValueKey('dropping_${drop.id}'),
           tween: Tween<double>(begin: 0.0, end: 1.0),
           duration: Duration(milliseconds: GameConstants.mergeMoveDuration),
-          curve: Curves.easeOutCubic,
+          curve: Curves.easeIn, // Gravity-like acceleration
           builder: (context, value, child) {
-            final startX = anim.fromColumn * cellWidth + (cellWidth - cellSize) / 2;
-            final startY = anim.fromRow * cellHeight + (cellHeight - cellSize) / 2;
-            final endX = anim.toColumn * cellWidth + (cellWidth - cellSize) / 2;
-            final endY = anim.toRow * cellHeight + (cellHeight - cellSize) / 2;
+            final startY = drop.startRow * cellHeight + (cellHeight - cellSize) / 2;
+            // Use fractional meetRow for smooth animation
+            final meetY = drop.meetRowFraction * cellHeight + (cellHeight - cellSize) / 2;
+            // Final position is where the below block was
+            final finalY = drop.belowBlockRow * cellHeight + (cellHeight - cellSize) / 2;
+            final x = drop.column * cellWidth + (cellWidth - cellSize) / 2;
 
-            // Move only halfway (0 to 0.5 of the distance)
-            final moveProgress = value < 0.5 ? value * 2 : 1.0;
-            final halfwayY = startY + (endY - startY) * 0.5;
-            final currentX = startX;
-            final currentY = startY + (halfwayY - startY) * moveProgress;
+            // Phase 1 (0 -> 0.5): Fall to meeting point, show original value
+            // Phase 2 (0.5 -> 1): Continue to final position with merged value, scale pulse
+            double currentY;
+            int displayValue;
+            double scale = 1.0;
 
-            // Fade out after 50% of animation
-            final opacity = value < 0.5 ? 1.0 : 1.0 - ((value - 0.5) * 2);
+            if (value < 0.5) {
+              // Phase 1: Fall to meeting point
+              final phase1Progress = value * 2; // 0 to 1
+              currentY = startY + (meetY - startY) * phase1Progress;
+              displayValue = drop.value;
+            } else {
+              // Phase 2: Continue from meeting point to final position with merged value
+              final phase2Progress = (value - 0.5) * 2; // 0 to 1
+              currentY = meetY + (finalY - meetY) * phase2Progress;
+              displayValue = drop.mergedValue;
 
-            // Scale down when fading
-            final scale = value < 0.5 ? 1.0 : 1.0 - ((value - 0.5) * 0.5);
+              // Scale pulse effect when showing merged value
+              // Pulse: grow then shrink
+              if (phase2Progress < 0.5) {
+                scale = 1.0 + 0.2 * (phase2Progress * 2); // 1.0 -> 1.2
+              } else {
+                scale = 1.2 - 0.2 * ((phase2Progress - 0.5) * 2); // 1.2 -> 1.0
+              }
+            }
 
             return Positioned(
-              left: currentX,
+              left: x,
               top: currentY,
-              child: Opacity(
-                opacity: opacity.clamp(0.0, 1.0),
-                child: Transform.scale(
-                  scale: scale.clamp(0.5, 1.0),
-                  child: AnimatedBlockWidget(
-                    block: Block(
-                      value: anim.value,
-                      row: anim.toRow,
-                      column: anim.toColumn,
-                      id: anim.id,
-                    ),
-                    size: cellSize - 4,
+              child: Transform.scale(
+                scale: scale,
+                child: AnimatedBlockWidget(
+                  block: Block(
+                    value: displayValue,
+                    row: drop.belowBlockRow,
+                    column: drop.column,
+                    id: drop.id,
                   ),
+                  size: cellSize - 4,
                 ),
               ),
             );
           },
+        ),
+      );
+    }
+
+    // Add merge animations for other blocks
+    for (final anim in gameState.mergeAnimations) {
+      // For below merges: move up halfway (magnet effect), then fade out
+      if (anim.isBelowMerge) {
+        widgets.add(
+          TweenAnimationBuilder<double>(
+            key: ValueKey('merge_below_${anim.id}'),
+            tween: Tween<double>(begin: 0.0, end: 1.0),
+            duration: Duration(milliseconds: GameConstants.mergeMoveDuration),
+            curve: Curves.easeOut, // Magnet-like deceleration as it approaches
+            builder: (context, value, child) {
+              final startX = anim.fromColumn * cellWidth + (cellWidth - cellSize) / 2;
+              final startY = anim.fromRow * cellHeight + (cellHeight - cellSize) / 2;
+              final targetY = anim.toRow * cellHeight + (cellHeight - cellSize) / 2;
+
+              // Calculate meeting point (halfway between below block and dropped block)
+              final meetY = (startY + targetY) / 2;
+
+              // Move up to meeting point in first half of animation
+              final moveProgress = value < 0.5 ? value * 2 : 1.0;
+              final currentY = startY + (meetY - startY) * moveProgress;
+
+              // Fade out after meeting point (50% of animation)
+              final opacity = value < 0.5 ? 1.0 : 1.0 - ((value - 0.5) * 2);
+
+              // Scale down when fading
+              final scale = value < 0.5 ? 1.0 : 1.0 - ((value - 0.5) * 0.6);
+
+              return Positioned(
+                left: startX,
+                top: currentY,
+                child: Opacity(
+                  opacity: opacity.clamp(0.0, 1.0),
+                  child: Transform.scale(
+                    scale: scale.clamp(0.4, 1.0),
+                    child: AnimatedBlockWidget(
+                      block: Block(
+                        value: anim.value,
+                        row: anim.toRow,
+                        column: anim.toColumn,
+                        id: anim.id,
+                      ),
+                      size: cellSize - 4,
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        );
+      } else {
+        // Normal merge animation (blocks move toward target)
+        // L-shape movement: horizontal first, then vertical (no diagonal)
+        widgets.add(
+          TweenAnimationBuilder<double>(
+            key: ValueKey('merge_${anim.id}'),
+            tween: Tween<double>(begin: 0.0, end: 1.0),
+            duration: Duration(milliseconds: GameConstants.mergeMoveDuration),
+            curve: Curves.easeOutCubic,
+            builder: (context, value, child) {
+              final startX = anim.fromColumn * cellWidth + (cellWidth - cellSize) / 2;
+              final startY = anim.fromRow * cellHeight + (cellHeight - cellSize) / 2;
+              final endX = anim.toColumn * cellWidth + (cellWidth - cellSize) / 2;
+              final endY = anim.toRow * cellHeight + (cellHeight - cellSize) / 2;
+
+              // L-shape movement: move horizontally first (0-0.5), then vertically (0.5-1)
+              double currentX;
+              double currentY;
+
+              if (startX != endX && startY != endY) {
+                // Diagonal case: use L-shape movement
+                if (value < 0.5) {
+                  // First half: move horizontally
+                  final hProgress = value * 2;
+                  currentX = startX + (endX - startX) * hProgress;
+                  currentY = startY;
+                } else {
+                  // Second half: move vertically
+                  final vProgress = (value - 0.5) * 2;
+                  currentX = endX;
+                  currentY = startY + (endY - startY) * vProgress;
+                }
+              } else {
+                // Same row or column: direct movement
+                currentX = startX + (endX - startX) * value;
+                currentY = startY + (endY - startY) * value;
+              }
+
+              // Fade out and scale down as it approaches target
+              final opacity = 1.0 - (value * 0.3);
+              final scale = 1.0 - (value * 0.2);
+
+              return Positioned(
+                left: currentX,
+                top: currentY,
+                child: Opacity(
+                  opacity: opacity.clamp(0.0, 1.0),
+                  child: Transform.scale(
+                    scale: scale.clamp(0.8, 1.0),
+                    child: AnimatedBlockWidget(
+                      block: Block(
+                        value: anim.value,
+                        row: anim.toRow,
+                        column: anim.toColumn,
+                        id: anim.id,
+                      ),
+                      size: cellSize - 4,
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
         );
       }
+    }
 
-      // Normal merge animation (blocks move toward target)
-      return TweenAnimationBuilder<double>(
-        key: ValueKey('merge_${anim.id}'),
-        tween: Tween<double>(begin: 0.0, end: 1.0),
-        duration: Duration(milliseconds: GameConstants.mergeMoveDuration),
-        curve: Curves.easeOutCubic,
-        builder: (context, value, child) {
-          final startX = anim.fromColumn * cellWidth + (cellWidth - cellSize) / 2;
-          final startY = anim.fromRow * cellHeight + (cellHeight - cellSize) / 2;
-          final endX = anim.toColumn * cellWidth + (cellWidth - cellSize) / 2;
-          final endY = anim.toRow * cellHeight + (cellHeight - cellSize) / 2;
-
-          final currentX = startX + (endX - startX) * value;
-          final currentY = startY + (endY - startY) * value;
-
-          return Positioned(
-            left: currentX,
-            top: currentY,
-            child: AnimatedBlockWidget(
-              block: Block(
-                value: anim.value,
-                row: anim.toRow,
-                column: anim.toColumn,
-                id: anim.id,
-              ),
-              size: cellSize - 4,
-            ),
-          );
-        },
-      );
-    }).toList();
+    return widgets;
   }
 
   int _findLandingRow(List<List<Block?>> board, int column) {

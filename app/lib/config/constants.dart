@@ -10,12 +10,12 @@ class GameConstants {
   static const List<int> dropValues = [2, 4, 8, 16, 32, 64];
 
   // Animation durations (milliseconds)
-  static const int dropDuration = 150;
-  static const int mergeDuration = 400;
-  static const int mergeMoveDuration = 250; // blocks moving to merge target
-  static const int scoreFadeDuration = 600;
-  static const int comboDuration = 800;
-  static const int gravityDuration = 120;
+  static const int dropDuration = 120;
+  static const int mergeDuration = 250;
+  static const int mergeMoveDuration = 180; // blocks moving to merge target
+  static const int scoreFadeDuration = 500;
+  static const int comboDuration = 500;
+  static const int gravityDuration = 80;
 
   // Scoring
   static const int baseScore = 0;

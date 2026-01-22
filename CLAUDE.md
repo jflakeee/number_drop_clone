@@ -23,12 +23,22 @@ flutter analyze
 # Run tests
 flutter test
 
+# Run a single test file
+flutter test test/widget_test.dart
+
 # Build web
 flutter build web
+
+# Build web for GitHub Pages (with base-href)
+flutter build web --release --base-href "/number_drop_clone/"
 
 # Build Android APK (requires Android SDK)
 flutter build apk --release
 ```
+
+## CI/CD
+
+GitHub Actions workflow (`.github/workflows/deploy.yml`) automatically deploys to GitHub Pages on push to `main`.
 
 ## Architecture
 
@@ -40,8 +50,16 @@ flutter build apk --release
 ### Core Game Logic
 The merge algorithm uses BFS to find adjacent blocks with the same value:
 - `dropBlock(column)` - drops current block into specified column
-- `_checkAndMerge()` - finds and merges adjacent same-value blocks
+- `_checkAndMerge()` - finds and merges adjacent same-value blocks using BFS (`_findAdjacentSame`)
 - `_applyGravity()` - moves blocks down after merges
+
+Block generation uses weighted random: `[40, 30, 15, 10, 4, 1]` for values `[2, 4, 8, 16, 32, 64]`.
+
+### Animation System
+Merge animations use `MergeAnimationData` to track block movements:
+- Regular merges: blocks move toward target position
+- Below-block merges: blocks move up halfway then disappear
+- `AnimatedGameBoard` handles rendering during merge animations
 
 ### Service Singletons
 All services use singleton pattern with lazy initialization:

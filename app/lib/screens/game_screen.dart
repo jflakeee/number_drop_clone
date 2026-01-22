@@ -4,6 +4,7 @@ import '../config/colors.dart';
 import '../config/constants.dart';
 import '../models/game_state.dart';
 import '../services/storage_service.dart';
+import '../services/audio_service.dart';
 import '../widgets/animated_game_board.dart';
 import '../widgets/score_popup.dart';
 import '../widgets/next_block_preview.dart';
@@ -53,6 +54,7 @@ class _GameScreenState extends State<GameScreen> {
   void _useHammer(GameState gameState, int row, int column) {
     if (!_hammerMode) return;
     if (gameState.useHammer(row, column)) {
+      AudioService.instance.playClick();
       setState(() {
         _hammerMode = false;
       });
@@ -77,6 +79,7 @@ class _GameScreenState extends State<GameScreen> {
             if (gameState.isGameOver && !_hasShownGameOver) {
               _hasShownGameOver = true;
               _saveGameData(gameState);
+              AudioService.instance.playGameOver();
             }
             if (!gameState.isGameOver) {
               _hasShownGameOver = false;
@@ -212,6 +215,7 @@ class _GameScreenState extends State<GameScreen> {
             onTap: () {
               gameState.addCoins(109);
               gameState.addToPiggyBank(109);
+              AudioService.instance.playCoin();
             },
           ),
 
