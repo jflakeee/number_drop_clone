@@ -42,11 +42,12 @@ class AudioService {
     await _playSound('merge.mp3');
   }
 
-  /// Play combo sound effect
+  /// Play combo sound effect with increasing pitch
   Future<void> playCombo(int comboCount) async {
     if (!_sfxEnabled) return;
-    // Higher combo = higher pitch
-    await _playSound('combo.mp3');
+    // Higher combo = higher pitch (1.0 base, +0.15 per combo, max 2.0)
+    final pitch = (1.0 + (comboCount - 1) * 0.15).clamp(1.0, 2.0);
+    await _playSoundWithPitch('combo.mp3', pitch);
   }
 
   /// Play high value block created sound
@@ -143,6 +144,17 @@ class AudioService {
   Future<void> _playSound(String filename) async {
     try {
       await _sfxPlayer.setVolume(_sfxVolume);
+      await _sfxPlayer.setPlaybackRate(1.0);
+      await _sfxPlayer.play(AssetSource('audio/$filename'));
+    } catch (e) {
+      // Audio file might not exist yet
+    }
+  }
+
+  Future<void> _playSoundWithPitch(String filename, double pitch) async {
+    try {
+      await _sfxPlayer.setVolume(_sfxVolume);
+      await _sfxPlayer.setPlaybackRate(pitch);
       await _sfxPlayer.play(AssetSource('audio/$filename'));
     } catch (e) {
       // Audio file might not exist yet

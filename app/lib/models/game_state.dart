@@ -194,8 +194,11 @@ class GameState extends ChangeNotifier {
     if (sameBlocks.length >= 2) {
       _comboCount++;
 
-      // Calculate score
-      final newValue = block.value * 2;
+      // Calculate new value based on number of blocks merged
+      // 2 blocks = 2x, 3 blocks = 4x, 4 blocks = 8x, etc.
+      final mergeCount = sameBlocks.length;
+      final multiplier = 1 << (mergeCount - 1); // 2^(n-1)
+      final newValue = block.value * multiplier;
       _score += newValue;
 
       // Award combo coins
