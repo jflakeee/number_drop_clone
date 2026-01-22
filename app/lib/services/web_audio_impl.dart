@@ -6,25 +6,31 @@ html.AudioElement? _bgmElement;
 
 void playWebAudio(String path, double volume, double playbackRate) {
   try {
-    // Create new audio element each time for overlapping sounds
-    final audio = html.AudioElement(path);
+    // Use absolute path for web
+    final absolutePath = path.startsWith('/') ? path : '/$path';
+    final audio = html.AudioElement(absolutePath);
     audio.volume = volume;
     audio.playbackRate = playbackRate;
-    audio.play();
+    audio.play().catchError((e) {
+      print('Web audio play error: $e');
+    });
   } catch (e) {
-    // Ignore errors
+    print('Web audio error: $e');
   }
 }
 
 void playWebBGM(String path, double volume) {
   try {
     stopWebBGM();
-    _bgmElement = html.AudioElement(path);
+    final absolutePath = path.startsWith('/') ? path : '/$path';
+    _bgmElement = html.AudioElement(absolutePath);
     _bgmElement!.volume = volume;
     _bgmElement!.loop = true;
-    _bgmElement!.play();
+    _bgmElement!.play().catchError((e) {
+      print('Web BGM play error: $e');
+    });
   } catch (e) {
-    // Ignore errors
+    print('Web BGM error: $e');
   }
 }
 
