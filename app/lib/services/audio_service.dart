@@ -1,7 +1,10 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:audioplayers/audioplayers.dart';
 
 /// Service for playing game sounds
 class AudioService {
+  // Use OGG for web (better compatibility), MP3 for mobile
+  static String get _audioExt => kIsWeb ? 'ogg' : 'mp3';
   static AudioService? _instance;
   static AudioService get instance {
     _instance ??= AudioService._();
@@ -33,13 +36,13 @@ class AudioService {
   /// Play drop sound effect
   Future<void> playDrop() async {
     if (!_sfxEnabled) return;
-    await _playSound('drop.mp3');
+    await _playSound('drop.$_audioExt');
   }
 
   /// Play merge sound effect
   Future<void> playMerge() async {
     if (!_sfxEnabled) return;
-    await _playSound('merge.mp3');
+    await _playSound('merge.$_audioExt');
   }
 
   /// Play combo sound effect with increasing pitch
@@ -47,31 +50,31 @@ class AudioService {
     if (!_sfxEnabled) return;
     // Higher combo = higher pitch (1.0 base, +0.15 per combo, max 2.0)
     final pitch = (1.0 + (comboCount - 1) * 0.15).clamp(1.0, 2.0);
-    await _playSoundWithPitch('combo.mp3', pitch);
+    await _playSoundWithPitch('combo.$_audioExt', pitch);
   }
 
   /// Play high value block created sound
   Future<void> playHighValue() async {
     if (!_sfxEnabled) return;
-    await _playSound('high_value.mp3');
+    await _playSound('high_value.$_audioExt');
   }
 
   /// Play game over sound
   Future<void> playGameOver() async {
     if (!_sfxEnabled) return;
-    await _playSound('game_over.mp3');
+    await _playSound('game_over.$_audioExt');
   }
 
   /// Play button click sound
   Future<void> playClick() async {
     if (!_sfxEnabled) return;
-    await _playSound('click.mp3');
+    await _playSound('click.$_audioExt');
   }
 
   /// Play coin sound
   Future<void> playCoin() async {
     if (!_sfxEnabled) return;
-    await _playSound('coin.mp3');
+    await _playSound('coin.$_audioExt');
   }
 
   /// Play background music
@@ -79,7 +82,7 @@ class AudioService {
     if (!_bgmEnabled) return;
     try {
       await _bgmPlayer.setVolume(_bgmVolume);
-      await _bgmPlayer.play(AssetSource('audio/bgm.mp3'));
+      await _bgmPlayer.play(AssetSource('audio/bgm.$_audioExt'));
     } catch (e) {
       // Audio file might not exist yet
     }
