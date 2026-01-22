@@ -36,48 +36,48 @@ class AudioService {
     }
   }
 
-  /// Play drop sound effect
-  Future<void> playDrop() async {
+  /// Play drop sound effect (fire and forget for instant playback)
+  void playDrop() {
     if (!_sfxEnabled) return;
-    await _playSound('drop.$_audioExt');
+    _playSound('drop.$_audioExt');
   }
 
   /// Play merge sound effect
-  Future<void> playMerge() async {
+  void playMerge() {
     if (!_sfxEnabled) return;
-    await _playSound('merge.$_audioExt');
+    _playSound('merge.$_audioExt');
   }
 
   /// Play combo sound effect with increasing pitch
-  Future<void> playCombo(int comboCount) async {
+  void playCombo(int comboCount) {
     if (!_sfxEnabled) return;
     // Higher combo = higher pitch (1.0 base, +0.15 per combo, max 2.0)
     final pitch = (1.0 + (comboCount - 1) * 0.15).clamp(1.0, 2.0);
-    await _playSoundWithPitch('combo.$_audioExt', pitch);
+    _playSoundWithPitch('combo.$_audioExt', pitch);
   }
 
   /// Play high value block created sound
-  Future<void> playHighValue() async {
+  void playHighValue() {
     if (!_sfxEnabled) return;
-    await _playSound('high_value.$_audioExt');
+    _playSound('high_value.$_audioExt');
   }
 
   /// Play game over sound
-  Future<void> playGameOver() async {
+  void playGameOver() {
     if (!_sfxEnabled) return;
-    await _playSound('game_over.$_audioExt');
+    _playSound('game_over.$_audioExt');
   }
 
   /// Play button click sound
-  Future<void> playClick() async {
+  void playClick() {
     if (!_sfxEnabled) return;
-    await _playSound('click.$_audioExt');
+    _playSound('click.$_audioExt');
   }
 
   /// Play coin sound
-  Future<void> playCoin() async {
+  void playCoin() {
     if (!_sfxEnabled) return;
-    await _playSound('coin.$_audioExt');
+    _playSound('coin.$_audioExt');
   }
 
   /// Play background music
