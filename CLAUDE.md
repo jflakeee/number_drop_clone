@@ -69,8 +69,24 @@ All services use singleton pattern with lazy initialization:
 - `AdService.instance` - Google AdMob (skips on web)
 - `IAPService.instance` - In-app purchases (skips on web)
 
+### Audio System
+Platform-specific audio implementation due to `audioplayers` web compatibility issues:
+- **Web**: Uses `dart:html` AudioElement directly (`web_audio_impl.dart`)
+- **Mobile**: Uses `audioplayers` package
+
+Conditional import pattern:
+```dart
+import 'web_audio_stub.dart' if (dart.library.html) 'web_audio_impl.dart' as web_audio;
+```
+
+Audio files location:
+- `assets/audio/` - Flutter assets (mobile)
+- `web/assets/audio/` - Static files (web, must be duplicated)
+
 ### Platform Handling
-Ad and IAP services check `kIsWeb` and skip initialization on web platform since these are mobile-only features.
+- Ad and IAP services check `kIsWeb` and skip initialization on web platform
+- Audio uses conditional imports for platform-specific implementations
+- Web audio uses relative paths for GitHub Pages compatibility
 
 ## Key Constants
 
