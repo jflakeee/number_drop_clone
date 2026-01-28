@@ -30,7 +30,60 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
   @override
   void initState() {
     super.initState();
-    _loadProfile();
+    // Check if user is signed in with Google
+    if (AuthService.instance.isAnonymous) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _showGoogleSignInRequired();
+      });
+    } else {
+      _loadProfile();
+    }
+  }
+
+  void _showGoogleSignInRequired() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: GameColors.boardBackground,
+        title: const Text(
+          'Google Sign-In Required',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: const Text(
+          'You need to sign in with Google to customize your display name.',
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              Navigator.pop(context);
+            },
+            child: const Text(
+              'Go Back',
+              style: TextStyle(color: Colors.white54),
+            ),
+          ),
+          ElevatedButton.icon(
+            onPressed: () async {
+              Navigator.pop(context);
+              final user = await AuthService.instance.signInWithGoogle();
+              if (user != null && mounted) {
+                _loadProfile();
+              } else if (mounted) {
+                Navigator.pop(context);
+              }
+            },
+            icon: const Icon(Icons.g_mobiledata, size: 20),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: GameColors.primary,
+            ),
+            label: const Text('Sign In with Google'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override

@@ -11,6 +11,7 @@ import 'services/vibration_service.dart';
 import 'services/ad_service.dart';
 import 'services/iap_service.dart';
 import 'services/offline_queue_service.dart';
+import 'services/auth_service.dart';
 import 'firebase_options.dart';
 
 void main() async {
@@ -28,6 +29,7 @@ void main() async {
   await AdService.instance.init();
   await IAPService.instance.init();
   await OfflineQueueService.instance.init();
+  await AuthService.instance.init(); // Anonymous sign-in
 
   // Lock to portrait mode
   SystemChrome.setPreferredOrientations([

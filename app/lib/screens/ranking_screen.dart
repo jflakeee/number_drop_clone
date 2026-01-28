@@ -103,11 +103,6 @@ class _RankingScreenState extends State<RankingScreen>
   }
 
   Future<void> _submitPendingScores() async {
-    if (!AuthService.instance.isSignedIn) {
-      _showSignInDialog();
-      return;
-    }
-
     final submitted =
         await OfflineQueueService.instance.submitPendingScores();
     if (submitted > 0) {
@@ -125,32 +120,62 @@ class _RankingScreenState extends State<RankingScreen>
     }
   }
 
-  Future<void> _handleSignIn() async {
+  Future<void> _handleGoogleSignIn() async {
     final user = await AuthService.instance.signInWithGoogle();
     if (user != null && mounted) {
       await _loadMyRanking();
       await _submitPendingScores();
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Signed in successfully!'),
+        SnackBar(
+          content: Text(
+            'Signed in as ${user.displayName ?? user.email}!',
+          ),
           backgroundColor: GameColors.primary,
         ),
       );
+      setState(() {});
     }
   }
 
-  void _showSignInDialog() {
+  Future<void> _handleSignOut() async {
+    await AuthService.instance.signOut();
+    if (mounted) {
+      await _loadMyRanking();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Signed out. Using guest account.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      setState(() {});
+    }
+  }
+
+  void _navigateToProfileEdit() {
+    if (!AuthService.instance.isGoogleSignedIn) {
+      _showGoogleSignInRequiredDialog();
+      return;
+    }
+
+    Navigator.of(context)
+        .push(
+          MaterialPageRoute(builder: (_) => const ProfileEditScreen()),
+        )
+        .then((_) => _loadMyRanking());
+  }
+
+  void _showGoogleSignInRequiredDialog() {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: GameColors.boardBackground,
         title: const Text(
-          'Sign In',
+          'Google Sign-In Required',
           style: TextStyle(color: Colors.white),
         ),
         content: const Text(
-          'Sign in with Google to submit scores and see your ranking.',
+          'Sign in with Google to customize your display name.',
           style: TextStyle(color: Colors.white70),
         ),
         actions: [
@@ -161,31 +186,26 @@ class _RankingScreenState extends State<RankingScreen>
               style: TextStyle(color: Colors.white54),
             ),
           ),
-          ElevatedButton(
+          ElevatedButton.icon(
             onPressed: () {
               Navigator.pop(context);
-              _handleSignIn();
+              _handleGoogleSignIn();
             },
+            icon: const Icon(Icons.g_mobiledata, size: 20),
             style: ElevatedButton.styleFrom(
               backgroundColor: GameColors.primary,
             ),
-            child: const Text('Sign In'),
+            label: const Text('Sign In with Google'),
           ),
         ],
       ),
     );
   }
 
-  void _navigateToProfileEdit() {
-    Navigator.of(context)
-        .push(
-          MaterialPageRoute(builder: (_) => const ProfileEditScreen()),
-        )
-        .then((_) => _loadMyRanking());
-  }
-
   @override
   Widget build(BuildContext context) {
+    final isGoogleSignedIn = AuthService.instance.isGoogleSignedIn;
+
     return Scaffold(
       backgroundColor: GameColors.background,
       appBar: AppBar(
@@ -227,18 +247,18 @@ class _RankingScreenState extends State<RankingScreen>
               onPressed: _submitPendingScores,
               tooltip: 'Submit pending scores',
             ),
-          if (AuthService.instance.isSignedIn)
+          // Show Google sign-in button if anonymous
+          if (!isGoogleSignedIn)
+            IconButton(
+              icon: const Icon(Icons.g_mobiledata, color: Colors.white70),
+              onPressed: _handleGoogleSignIn,
+              tooltip: 'Sign in with Google',
+            ),
+          // Show sign-out button if signed in with Google
+          if (isGoogleSignedIn)
             IconButton(
               icon: const Icon(Icons.logout, color: Colors.white70),
-              onPressed: () async {
-                await AuthService.instance.signOut();
-                if (mounted) {
-                  setState(() {
-                    _myRanking = null;
-                    _myRankPosition = null;
-                  });
-                }
-              },
+              onPressed: _handleSignOut,
               tooltip: 'Sign out',
             ),
         ],
@@ -261,10 +281,9 @@ class _RankingScreenState extends State<RankingScreen>
             myRanking: _myRanking,
             rankPosition: _myRankPosition,
             isLoading: _isLoadingMyRank,
-            onSignIn: _handleSignIn,
-            onProfileEdit: AuthService.instance.isSignedIn
-                ? _navigateToProfileEdit
-                : null,
+            isAnonymous: !isGoogleSignedIn,
+            onSignIn: _handleGoogleSignIn,
+            onProfileEdit: _navigateToProfileEdit,
           ),
 
           // Rankings list

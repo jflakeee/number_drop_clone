@@ -89,9 +89,10 @@ class _GameScreenState extends State<GameScreen> {
   Future<void> _submitScore(GameState gameState) async {
     if (_isSubmittingScore) return;
 
+    // Always signed in (anonymous or Google)
     if (!AuthService.instance.isSignedIn) {
-      await _handleSignIn();
-      if (!AuthService.instance.isSignedIn) return;
+      // This shouldn't happen, but initialize if needed
+      await AuthService.instance.init();
     }
 
     setState(() => _isSubmittingScore = true);
@@ -503,8 +504,6 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   Widget _buildGameOverOverlay(BuildContext context, GameState gameState) {
-    final isSignedIn = AuthService.instance.isSignedIn;
-
     return Container(
       color: Colors.black.withOpacity(0.8),
       child: Center(
@@ -569,16 +568,12 @@ class _GameScreenState extends State<GameScreen> {
                             strokeWidth: 2,
                           ),
                         )
-                      : Icon(
-                          isSignedIn ? Icons.leaderboard : Icons.login,
+                      : const Icon(
+                          Icons.leaderboard,
                           size: 18,
                         ),
                   label: Text(
-                    _isSubmittingScore
-                        ? 'SUBMITTING...'
-                        : isSignedIn
-                            ? 'SUBMIT SCORE'
-                            : 'SIGN IN & SUBMIT',
+                    _isSubmittingScore ? 'SUBMITTING...' : 'SUBMIT SCORE',
                     style: const TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.bold,

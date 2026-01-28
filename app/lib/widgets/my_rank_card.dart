@@ -8,6 +8,7 @@ class MyRankCard extends StatelessWidget {
   final RankingEntry? myRanking;
   final int? rankPosition;
   final bool isLoading;
+  final bool isAnonymous;
   final VoidCallback? onSignIn;
   final VoidCallback? onProfileEdit;
 
@@ -16,14 +17,13 @@ class MyRankCard extends StatelessWidget {
     this.myRanking,
     this.rankPosition,
     this.isLoading = false,
+    this.isAnonymous = true,
     this.onSignIn,
     this.onProfileEdit,
   });
 
   @override
   Widget build(BuildContext context) {
-    final isSignedIn = AuthService.instance.isSignedIn;
-
     return Container(
       margin: const EdgeInsets.all(16),
       padding: const EdgeInsets.all(16),
@@ -52,68 +52,126 @@ class MyRankCard extends StatelessWidget {
                 ),
               ),
             )
-          : isSignedIn
-              ? _buildSignedInContent()
-              : _buildSignOutContent(),
+          : _buildContent(),
     );
   }
 
-  Widget _buildSignedInContent() {
+  Widget _buildContent() {
     final authService = AuthService.instance;
 
     if (myRanking == null) {
-      return Row(
-        children: [
-          // Profile photo
-          _buildProfilePhoto(authService.photoUrl, authService.displayName),
-          const SizedBox(width: 12),
+      return _buildNoRankingContent(authService);
+    }
 
-          // Info
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Flexible(
-                      child: Text(
-                        authService.displayName ?? 'Player',
-                        style: const TextStyle(
+    return _buildRankingContent(authService);
+  }
+
+  Widget _buildNoRankingContent(AuthService authService) {
+    return Row(
+      children: [
+        // Profile photo
+        _buildProfilePhoto(authService.photoUrl, null),
+        const SizedBox(width: 12),
+
+        // Info
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Flexible(
+                    child: FutureBuilder<String>(
+                      future: authService.getCurrentDisplayName(),
+                      builder: (context, snapshot) {
+                        final name = snapshot.data ?? 'Loading...';
+                        return Text(
+                          name,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        );
+                      },
+                    ),
+                  ),
+                  if (isAnonymous) ...[
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withOpacity(0.8),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Text(
+                        'GUEST',
+                        style: TextStyle(
                           color: Colors.white,
-                          fontSize: 16,
+                          fontSize: 9,
                           fontWeight: FontWeight.bold,
                         ),
-                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    if (onProfileEdit != null) ...[
-                      const SizedBox(width: 8),
-                      GestureDetector(
-                        onTap: onProfileEdit,
-                        child: const Icon(
-                          Icons.edit,
-                          color: Colors.white70,
-                          size: 16,
+                  ],
+                  if (onProfileEdit != null) ...[
+                    const SizedBox(width: 8),
+                    GestureDetector(
+                      onTap: onProfileEdit,
+                      child: Icon(
+                        Icons.edit,
+                        color: isAnonymous ? Colors.white38 : Colors.white70,
+                        size: 16,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                isAnonymous
+                    ? 'Play a game and submit your score!'
+                    : 'No ranking yet. Play a game!',
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 12,
+                ),
+              ),
+              if (isAnonymous) ...[
+                const SizedBox(height: 8),
+                GestureDetector(
+                  onTap: onSignIn,
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.g_mobiledata,
+                        color: Colors.white,
+                        size: 16,
+                      ),
+                      SizedBox(width: 4),
+                      Text(
+                        'Sign in to save your name',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          decoration: TextDecoration.underline,
                         ),
                       ),
                     ],
-                  ],
-                ),
-                const SizedBox(height: 4),
-                const Text(
-                  'No ranking yet. Play a game!',
-                  style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 12,
                   ),
                 ),
               ],
-            ),
+            ],
           ),
-        ],
-      );
-    }
+        ),
+      ],
+    );
+  }
 
+  Widget _buildRankingContent(AuthService authService) {
     return Row(
       children: [
         // Rank position
@@ -166,13 +224,32 @@ class MyRankCard extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
+                  if (isAnonymous) ...[
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withOpacity(0.8),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Text(
+                        'GUEST',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 9,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
                   if (onProfileEdit != null) ...[
                     const SizedBox(width: 8),
                     GestureDetector(
                       onTap: onProfileEdit,
-                      child: const Icon(
+                      child: Icon(
                         Icons.edit,
-                        color: Colors.white70,
+                        color: isAnonymous ? Colors.white38 : Colors.white70,
                         size: 16,
                       ),
                     ),
@@ -180,12 +257,30 @@ class MyRankCard extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 2),
-              Text(
-                'Best Block: ${myRanking!.highestBlock}',
-                style: const TextStyle(
-                  color: Colors.white70,
-                  fontSize: 11,
-                ),
+              Row(
+                children: [
+                  Text(
+                    'Best Block: ${myRanking!.highestBlock}',
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 11,
+                    ),
+                  ),
+                  if (isAnonymous) ...[
+                    const SizedBox(width: 8),
+                    GestureDetector(
+                      onTap: onSignIn,
+                      child: const Text(
+                        'Link Google',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          decoration: TextDecoration.underline,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
               ),
             ],
           ),
@@ -214,31 +309,6 @@ class MyRankCard extends StatelessWidget {
           ],
         ),
       ],
-    );
-  }
-
-  Widget _buildSignOutContent() {
-    return InkWell(
-      onTap: onSignIn,
-      child: const Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.login,
-            color: Colors.white,
-            size: 24,
-          ),
-          SizedBox(width: 12),
-          Text(
-            'Sign in to see your ranking',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ],
-      ),
     );
   }
 
