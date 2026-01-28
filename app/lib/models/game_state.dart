@@ -161,6 +161,12 @@ class GameState extends ChangeNotifier {
     // Check for merges
     await _checkAndMerge(landingRow, column);
 
+    // Final verification: ensure all possible merges have been processed
+    if (_hasPendingMerges()) {
+      debugPrint('dropBlock: Additional pending merges detected, processing...');
+      await _processAllPendingMerges();
+    }
+
     // Check for game over
     if (_isTopRowBlocked()) {
       _isGameOver = true;
@@ -370,17 +376,28 @@ class GameState extends ChangeNotifier {
       // Recursively check for more merges at the new position
       await _checkAndMerge(actualLandingRow, targetColumn);
 
-      // Also check adjacent columns for chain reactions
+      // Check all affected columns for chain reactions (check all blocks, not just the lowest)
       for (final col in affectedColumns) {
         if (col != targetColumn) {
-          // Find the lowest block in this column and check for merges
+          // Check all blocks in this column for potential merges
           for (int r = GameConstants.rows - 1; r >= 0; r--) {
             if (_board[r][col] != null) {
-              await _checkAndMerge(r, col);
-              break;
+              final sameBlocks = _findAdjacentSame(r, col, _board[r][col]!.value);
+              if (sameBlocks.length >= 2) {
+                await _checkAndMerge(r, col);
+                // After processing a merge, the column structure changed
+                // Restart checking this column from the bottom
+                r = GameConstants.rows;
+              }
             }
           }
         }
+      }
+
+      // Final safety check: ensure no merges were missed
+      if (_hasPendingMerges()) {
+        debugPrint('Warning: Pending merges detected after _checkAndMerge completed');
+        await _processAllPendingMerges();
       }
     }
   }
@@ -444,6 +461,73 @@ class GameState extends ChangeNotifier {
           writeRow--;
         }
       }
+    }
+  }
+
+  /// Find all pending merges in the entire board
+  /// Returns a list of positions where merges are possible
+  List<_Position> _findAllPendingMerges() {
+    final pendingMerges = <_Position>[];
+    final checked = <String>{};
+
+    for (int row = 0; row < GameConstants.rows; row++) {
+      for (int col = 0; col < GameConstants.columns; col++) {
+        final block = _board[row][col];
+        if (block == null) continue;
+
+        final key = '${row}_${col}';
+        if (checked.contains(key)) continue;
+
+        final sameBlocks = _findAdjacentSame(row, col, block.value);
+        if (sameBlocks.length >= 2) {
+          // Found a mergeable group - add the first position
+          pendingMerges.add(_Position(row, col));
+          // Mark all positions in this group as checked
+          for (final pos in sameBlocks) {
+            checked.add('${pos.row}_${pos.column}');
+          }
+        }
+      }
+    }
+
+    return pendingMerges;
+  }
+
+  /// Check if there are any pending merges in the board
+  bool _hasPendingMerges() {
+    for (int row = 0; row < GameConstants.rows; row++) {
+      for (int col = 0; col < GameConstants.columns; col++) {
+        final block = _board[row][col];
+        if (block == null) continue;
+
+        final sameBlocks = _findAdjacentSame(row, col, block.value);
+        if (sameBlocks.length >= 2) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  /// Process all pending merges until no more merges are possible
+  Future<void> _processAllPendingMerges() async {
+    // Safety counter to prevent infinite loops
+    int maxIterations = 100;
+    int iterations = 0;
+
+    while (iterations < maxIterations) {
+      final pendingMerges = _findAllPendingMerges();
+      if (pendingMerges.isEmpty) break;
+
+      // Process the first pending merge (which will recursively handle chain reactions)
+      final pos = pendingMerges.first;
+      await _checkAndMerge(pos.row, pos.column);
+
+      iterations++;
+    }
+
+    if (iterations >= maxIterations) {
+      debugPrint('Warning: _processAllPendingMerges reached max iterations');
     }
   }
 
