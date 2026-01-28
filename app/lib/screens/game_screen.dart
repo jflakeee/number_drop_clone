@@ -101,9 +101,9 @@ class _GameScreenState extends State<GameScreen> {
       int highestBlock = 2;
       for (int row = 0; row < GameConstants.rows; row++) {
         for (int col = 0; col < GameConstants.columns; col++) {
-          final value = gameState.grid[row][col];
-          if (value > highestBlock) {
-            highestBlock = value;
+          final block = gameState.board[row][col];
+          if (block != null && block.value > highestBlock) {
+            highestBlock = block.value;
           }
         }
       }
