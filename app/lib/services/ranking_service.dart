@@ -180,27 +180,27 @@ class RankingService {
       final myRanking = await getMyRanking();
       if (myRanking == null) return null;
 
-      // Count how many scores are higher than mine
-      Query<Map<String, dynamic>> query =
-          _rankingsRef.where('score', isGreaterThan: myRanking.score);
-
-      // Apply time filter for daily/weekly
-      if (type == RankingType.daily) {
-        final today = DateTime.now();
-        final startOfDay = DateTime(today.year, today.month, today.day);
-        query = query.where('updatedAt',
-            isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay));
-      } else if (type == RankingType.weekly) {
-        final now = DateTime.now();
-        final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
-        final startOfWeekDay =
-            DateTime(startOfWeek.year, startOfWeek.month, startOfWeek.day);
-        query = query.where('updatedAt',
-            isGreaterThanOrEqualTo: Timestamp.fromDate(startOfWeekDay));
+      if (type == RankingType.all) {
+        // For all-time: simple count query (single field)
+        final snapshot = await _rankingsRef
+            .where('score', isGreaterThan: myRanking.score)
+            .count()
+            .get();
+        return (snapshot.count ?? 0) + 1;
+      } else {
+        // For daily/weekly: fetch rankings and find position client-side
+        // This avoids the multi-field inequality filter issue
+        final rankings = await getRankings(type: type, limit: 1000);
+        int position = 1;
+        for (final entry in rankings) {
+          if (entry.score > myRanking.score) {
+            position++;
+          }
+        }
+        // Check if user is in the time-filtered rankings
+        final isInRankings = rankings.any((e) => e.odiserId == auth.userId);
+        return isInRankings ? position : null;
       }
-
-      final snapshot = await query.count().get();
-      return (snapshot.count ?? 0) + 1;
     } catch (e) {
       debugPrint('Get my rank position error: $e');
       return null;
