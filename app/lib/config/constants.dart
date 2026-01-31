@@ -51,6 +51,7 @@ class GameConstants {
   // Item costs (coins)
   static const int undoCost = 50;
   static const int hammerCost = 100;
+  static const int shuffleCost = 120;
 
   // Mascot progress
   static const int mascotGoalCoins = 5000;

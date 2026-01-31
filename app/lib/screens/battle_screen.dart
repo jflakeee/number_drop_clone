@@ -172,6 +172,9 @@ class _BattleScreenState extends State<BattleScreen> {
   }
 
   void _goToMainMenu() {
+    // Reset game state before going to main menu
+    final gameState = context.read<GameState>();
+    gameState.newGame();
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(builder: (_) => const MainMenuScreen()),
     );

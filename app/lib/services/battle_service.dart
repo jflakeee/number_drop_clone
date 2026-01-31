@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/foundation.dart';
@@ -30,7 +29,7 @@ class BattleService {
     }
 
     try {
-      final odiserId = auth.userId!;
+      final userId = auth.userId!;
       final displayName = await auth.getCurrentDisplayName();
       final photoUrl = auth.photoUrl;
 
@@ -38,7 +37,7 @@ class BattleService {
       final seed = DateTime.now().millisecondsSinceEpoch % 100000000;
 
       final player = BattlePlayer(
-        odiserId: odiserId,
+        userId: userId,
         displayName: displayName,
         photoUrl: photoUrl,
       );
@@ -46,7 +45,7 @@ class BattleService {
       final battleData = {
         'seed': seed,
         'status': BattleStatus.waiting.name,
-        'players': {odiserId: player.toJson()},
+        'players': {userId: player.toJson()},
         'winnerId': null,
         'createdAt': FieldValue.serverTimestamp(),
         'startedAt': null,
@@ -58,7 +57,7 @@ class BattleService {
 
       // Initialize live scores in Realtime Database
       await _liveScoresRef.child(docRef.id).set({
-        odiserId: {'score': 0, 'highestBlock': 0, 'isFinished': false},
+        userId: {'score': 0, 'highestBlock': 0, 'isFinished': false},
       });
 
       debugPrint('Battle created: ${docRef.id}');
@@ -78,13 +77,13 @@ class BattleService {
     }
 
     try {
-      final odiserId = auth.userId!;
+      final userId = auth.userId!;
       final displayName = await auth.getCurrentDisplayName();
       final photoUrl = auth.photoUrl;
 
       final docRef = _battlesRef.doc(battleId);
 
-      return await _firestore.runTransaction<Battle?>((transaction) async {
+      final result = await _firestore.runTransaction<Battle?>((transaction) async {
         final doc = await transaction.get(docRef);
         if (!doc.exists) {
           debugPrint('Battle not found');
@@ -94,7 +93,7 @@ class BattleService {
         final battle = Battle.fromFirestore(doc);
 
         // Check if already in battle
-        if (battle.players.containsKey(odiserId)) {
+        if (battle.players.containsKey(userId)) {
           debugPrint('Already in this battle');
           return battle;
         }
@@ -112,30 +111,34 @@ class BattleService {
         }
 
         final player = BattlePlayer(
-          odiserId: odiserId,
+          userId: userId,
           displayName: displayName,
           photoUrl: photoUrl,
         );
 
         // Add player to battle
         transaction.update(docRef, {
-          'players.$odiserId': player.toJson(),
-        });
-
-        // Initialize live score for this player
-        await _liveScoresRef.child(battleId).child(odiserId).set({
-          'score': 0,
-          'highestBlock': 0,
-          'isFinished': false,
+          'players.$userId': player.toJson(),
         });
 
         debugPrint('Joined battle: $battleId');
 
         // Return updated battle
         final updatedPlayers = Map<String, BattlePlayer>.from(battle.players);
-        updatedPlayers[odiserId] = player;
+        updatedPlayers[userId] = player;
         return battle.copyWith(players: updatedPlayers);
       });
+
+      // Initialize live score AFTER transaction completes successfully
+      if (result != null) {
+        await _liveScoresRef.child(battleId).child(userId).set({
+          'score': 0,
+          'highestBlock': 0,
+          'isFinished': false,
+        });
+      }
+
+      return result;
     } catch (e) {
       debugPrint('Join battle error: $e');
       return null;
@@ -148,19 +151,23 @@ class BattleService {
     if (!auth.isSignedIn) return null;
 
     try {
-      // Find waiting battles
+      // Calculate cutoff time (5 minutes ago)
+      final cutoffTime = DateTime.now().subtract(const Duration(minutes: 5));
+
+      // Find waiting battles created within the last 5 minutes
       final query = await _battlesRef
           .where('status', isEqualTo: BattleStatus.waiting.name)
+          .where('createdAt', isGreaterThan: Timestamp.fromDate(cutoffTime))
           .orderBy('createdAt', descending: false)
           .limit(10)
           .get();
 
-      final odiserId = auth.userId!;
+      final userId = auth.userId!;
 
       // Find a battle that isn't our own
       for (final doc in query.docs) {
         final battle = Battle.fromFirestore(doc);
-        if (!battle.players.containsKey(odiserId) && !battle.isFull) {
+        if (!battle.players.containsKey(userId) && !battle.isFull) {
           // Try to join this battle
           final joined = await joinBattle(battle.id);
           if (joined != null) return joined;
@@ -181,9 +188,9 @@ class BattleService {
     if (!auth.isSignedIn) return false;
 
     try {
-      final odiserId = auth.userId!;
+      final userId = auth.userId!;
       await _battlesRef.doc(battleId).update({
-        'players.$odiserId.isReady': ready,
+        'players.$userId.isReady': ready,
       });
       return true;
     } catch (e) {
@@ -216,8 +223,8 @@ class BattleService {
     if (!auth.isSignedIn) return;
 
     try {
-      final odiserId = auth.userId!;
-      await _liveScoresRef.child(battleId).child(odiserId).update({
+      final userId = auth.userId!;
+      await _liveScoresRef.child(battleId).child(userId).update({
         'score': score,
         'highestBlock': highestBlock,
       });
@@ -236,18 +243,18 @@ class BattleService {
     if (!auth.isSignedIn) return;
 
     try {
-      final odiserId = auth.userId!;
+      final userId = auth.userId!;
 
       // Update Firestore with final score
       await _battlesRef.doc(battleId).update({
-        'players.$odiserId.score': finalScore,
-        'players.$odiserId.highestBlock': highestBlock,
-        'players.$odiserId.isFinished': true,
-        'players.$odiserId.finishedAt': DateTime.now().toIso8601String(),
+        'players.$userId.score': finalScore,
+        'players.$userId.highestBlock': highestBlock,
+        'players.$userId.isFinished': true,
+        'players.$userId.finishedAt': DateTime.now().toIso8601String(),
       });
 
       // Update Realtime Database
-      await _liveScoresRef.child(battleId).child(odiserId).update({
+      await _liveScoresRef.child(battleId).child(userId).update({
         'score': finalScore,
         'highestBlock': highestBlock,
         'isFinished': true,
@@ -259,17 +266,17 @@ class BattleService {
 
       if (battle.allPlayersFinished) {
         // Determine winner and update battle
-        String? odiserId;
+        String? userId;
         final playerList = battle.players.values.toList();
         if (playerList[0].score > playerList[1].score) {
-          odiserId = playerList[0].odiserId;
+          userId = playerList[0].userId;
         } else if (playerList[1].score > playerList[0].score) {
-          odiserId = playerList[1].odiserId;
+          userId = playerList[1].userId;
         }
 
         await _battlesRef.doc(battleId).update({
           'status': BattleStatus.finished.name,
-          'winnerId': odiserId,
+          'winnerId': userId,
           'finishedAt': FieldValue.serverTimestamp(),
         });
 
@@ -305,7 +312,7 @@ class BattleService {
     if (!auth.isSignedIn) return false;
 
     try {
-      final odiserId = auth.userId!;
+      final userId = auth.userId!;
       final doc = await _battlesRef.doc(battleId).get();
 
       if (!doc.exists) return false;
@@ -326,10 +333,10 @@ class BattleService {
       } else {
         // Remove player from battle
         await _battlesRef.doc(battleId).update({
-          'players.$odiserId': FieldValue.delete(),
+          'players.$userId': FieldValue.delete(),
           'status': BattleStatus.waiting.name,
         });
-        await _liveScoresRef.child(battleId).child(odiserId).remove();
+        await _liveScoresRef.child(battleId).child(userId).remove();
       }
 
       return true;
@@ -357,11 +364,11 @@ class BattleService {
     if (!auth.isSignedIn) return [];
 
     try {
-      final odiserId = auth.userId!;
+      final userId = auth.userId!;
 
       // Note: This requires a composite index in Firestore
       final query = await _battlesRef
-          .where('players.$odiserId.odiserId', isEqualTo: odiserId)
+          .where('players.$userId.userId', isEqualTo: userId)
           .orderBy('createdAt', descending: true)
           .limit(limit)
           .get();

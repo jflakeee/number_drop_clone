@@ -38,9 +38,12 @@ class GameState extends ChangeNotifier {
   // Target system
   int _currentTargetIndex = 0;
 
-  // Undo system (for future implementation)
-  // ignore: unused_field
-  GameState? _previousState;
+  // Undo system
+  List<List<Block?>>? _savedBoard;
+  Block? _savedCurrentBlock;
+  Block? _savedNextBlock;
+  int _savedScore = 0;
+  int _savedCoins = 0;
   bool _canUndo = false;
 
   // Random generator with seed support
@@ -109,7 +112,11 @@ class GameState extends ChangeNotifier {
     _droppingBlock = null;
     _currentTargetIndex = 0;
     _canUndo = false;
-    _previousState = null;
+    _savedBoard = null;
+    _savedCurrentBlock = null;
+    _savedNextBlock = null;
+    _savedScore = 0;
+    _savedCoins = 0;
 
     _generateNextBlock();
     _generateNextBlock();
@@ -163,7 +170,17 @@ class GameState extends ChangeNotifier {
   /// Save current state for undo
   void _saveState() {
     // Deep copy the board
-    // Note: In a full implementation, this would need proper deep copying
+    _savedBoard = List.generate(
+      GameConstants.rows,
+      (row) => List.generate(
+        GameConstants.columns,
+        (col) => _board[row][col]?.copyWith(),
+      ),
+    );
+    _savedCurrentBlock = _currentBlock?.copyWith();
+    _savedNextBlock = _nextBlock?.copyWith();
+    _savedScore = _score;
+    _savedCoins = _coins;
     _canUndo = true;
   }
 
@@ -593,8 +610,22 @@ class GameState extends ChangeNotifier {
 
   /// Undo last move
   void undo() {
-    if (!_canUndo) return;
-    // Implement undo logic
+    if (!_canUndo || _savedBoard == null) return;
+
+    // Restore saved state
+    _board = List.generate(
+      GameConstants.rows,
+      (row) => List.generate(
+        GameConstants.columns,
+        (col) => _savedBoard![row][col]?.copyWith(),
+      ),
+    );
+    _currentBlock = _savedCurrentBlock?.copyWith();
+    _nextBlock = _savedNextBlock?.copyWith();
+    _score = _savedScore;
+    _coins = _savedCoins;
+    _isGameOver = false;
+
     _canUndo = false;
     notifyListeners();
   }
@@ -607,6 +638,22 @@ class GameState extends ChangeNotifier {
     _coins -= GameConstants.hammerCost;
     _board[row][column] = null;
     _applyGravity();
+    notifyListeners();
+    return true;
+  }
+
+  /// Shuffle: swap current block with next block
+  bool shuffle() {
+    if (_coins < GameConstants.shuffleCost) return false;
+    if (_currentBlock == null || _nextBlock == null) return false;
+
+    _coins -= GameConstants.shuffleCost;
+
+    // Swap current and next blocks
+    final temp = _currentBlock;
+    _currentBlock = _nextBlock;
+    _nextBlock = temp;
+
     notifyListeners();
     return true;
   }

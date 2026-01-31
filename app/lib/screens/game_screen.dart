@@ -27,14 +27,26 @@ class _GameScreenState extends State<GameScreen> {
   bool _hasShownGameOver = false;
   bool _isSubmittingScore = false;
   bool _scoreSubmitted = false;
+  bool _isInitialized = false;
 
   @override
   void initState() {
     super.initState();
-    _initGame();
   }
 
-  Future<void> _initGame() async {
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_isInitialized) {
+      _isInitialized = true;
+      // Start new game immediately when screen loads
+      final gameState = context.read<GameState>();
+      gameState.newGame();
+      _loadUserData();
+    }
+  }
+
+  Future<void> _loadUserData() async {
     final userData = await StorageService.instance.loadUserData();
     if (mounted) {
       final gameState = context.read<GameState>();
@@ -68,6 +80,9 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   void _goToMainMenu() {
+    // Reset game state before going to main menu
+    final gameState = context.read<GameState>();
+    gameState.newGame();
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(builder: (_) => const MainMenuScreen()),
     );
@@ -168,8 +183,11 @@ class _GameScreenState extends State<GameScreen> {
       body: SafeArea(
         child: Consumer<GameState>(
           builder: (context, gameState, child) {
+            // Skip game over handling during first frame (before newGame() takes effect)
+            final shouldShowGameOver = gameState.isGameOver && gameState.score > 0;
+
             // Save data and auto-submit score when game over
-            if (gameState.isGameOver && !_hasShownGameOver) {
+            if (shouldShowGameOver && !_hasShownGameOver) {
               _hasShownGameOver = true;
               _scoreSubmitted = false;
               _saveGameData(gameState);
@@ -230,8 +248,8 @@ class _GameScreenState extends State<GameScreen> {
                     child: _buildHammerModeIndicator(),
                   ),
 
-                // Game over overlay
-                if (gameState.isGameOver)
+                // Game over overlay (only show if score > 0 to avoid showing on screen init)
+                if (shouldShowGameOver)
                   _buildGameOverOverlay(context, gameState),
 
                 // Pause overlay
@@ -321,9 +339,21 @@ class _GameScreenState extends State<GameScreen> {
             icon: Icons.swap_horiz,
             iconColor: Colors.orange,
             backgroundColor: const Color(0xFF3D5A80),
-            coinAmount: 120,
+            coinAmount: GameConstants.shuffleCost,
             onTap: () {
-              // TODO: Implement shuffle
+              if (gameState.coins < GameConstants.shuffleCost) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Not enough coins!'),
+                    backgroundColor: Colors.red,
+                    duration: Duration(seconds: 1),
+                  ),
+                );
+                return;
+              }
+              if (gameState.shuffle()) {
+                AudioService.instance.playClick();
+              }
             },
           ),
 

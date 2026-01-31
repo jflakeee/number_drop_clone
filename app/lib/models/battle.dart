@@ -10,7 +10,7 @@ enum BattleStatus {
 
 /// Player data in a battle
 class BattlePlayer {
-  final String odiserId;
+  final String userId;
   final String displayName;
   final String? photoUrl;
   final int score;
@@ -20,7 +20,7 @@ class BattlePlayer {
   final DateTime? finishedAt;
 
   const BattlePlayer({
-    required this.odiserId,
+    required this.userId,
     required this.displayName,
     this.photoUrl,
     this.score = 0,
@@ -31,7 +31,7 @@ class BattlePlayer {
   });
 
   Map<String, dynamic> toJson() => {
-        'odiserId': odiserId,
+        'userId': userId,
         'displayName': displayName,
         'photoUrl': photoUrl,
         'score': score,
@@ -42,7 +42,7 @@ class BattlePlayer {
       };
 
   factory BattlePlayer.fromJson(Map<String, dynamic> json) => BattlePlayer(
-        odiserId: json['odiserId'] as String,
+        userId: json['userId'] as String,
         displayName: json['displayName'] as String? ?? 'Unknown',
         photoUrl: json['photoUrl'] as String?,
         score: json['score'] as int? ?? 0,
@@ -55,7 +55,7 @@ class BattlePlayer {
       );
 
   BattlePlayer copyWith({
-    String? odiserId,
+    String? userId,
     String? displayName,
     String? photoUrl,
     int? score,
@@ -65,7 +65,7 @@ class BattlePlayer {
     DateTime? finishedAt,
   }) =>
       BattlePlayer(
-        odiserId: odiserId ?? this.odiserId,
+        userId: userId ?? this.userId,
         displayName: displayName ?? this.displayName,
         photoUrl: photoUrl ?? this.photoUrl,
         score: score ?? this.score,
@@ -82,7 +82,7 @@ class Battle {
   final int seed;
   final BattleStatus status;
   final Map<String, BattlePlayer> players;
-  final String? odiserId;
+  final String? winnerId;
   final DateTime createdAt;
   final DateTime? startedAt;
   final DateTime? finishedAt;
@@ -92,7 +92,7 @@ class Battle {
     required this.seed,
     required this.status,
     required this.players,
-    this.odiserId,
+    this.winnerId,
     required this.createdAt,
     this.startedAt,
     this.finishedAt,
@@ -129,21 +129,21 @@ class Battle {
   }
 
   /// Get opponent for a given player
-  BattlePlayer? getOpponent(String odiserId) {
+  BattlePlayer? getOpponent(String userId) {
     for (final player in players.values) {
-      if (player.odiserId != odiserId) return player;
+      if (player.userId != userId) return player;
     }
     return null;
   }
 
   /// Get player by ID
-  BattlePlayer? getPlayer(String odiserId) => players[odiserId];
+  BattlePlayer? getPlayer(String userId) => players[userId];
 
   Map<String, dynamic> toFirestore() => {
         'seed': seed,
         'status': status.name,
         'players': players.map((k, v) => MapEntry(k, v.toJson())),
-        'winnerId': odiserId,
+        'winnerId': winnerId,
         'createdAt': FieldValue.serverTimestamp(),
         'startedAt': startedAt != null ? Timestamp.fromDate(startedAt!) : null,
         'finishedAt':
@@ -164,7 +164,7 @@ class Battle {
       players: playersData.map(
         (k, v) => MapEntry(k, BattlePlayer.fromJson(v as Map<String, dynamic>)),
       ),
-      odiserId: data['winnerId'] as String?,
+      winnerId: data['winnerId'] as String?,
       createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       startedAt: (data['startedAt'] as Timestamp?)?.toDate(),
       finishedAt: (data['finishedAt'] as Timestamp?)?.toDate(),
@@ -176,7 +176,7 @@ class Battle {
     int? seed,
     BattleStatus? status,
     Map<String, BattlePlayer>? players,
-    String? odiserId,
+    String? winnerId,
     DateTime? createdAt,
     DateTime? startedAt,
     DateTime? finishedAt,
@@ -186,7 +186,7 @@ class Battle {
         seed: seed ?? this.seed,
         status: status ?? this.status,
         players: players ?? this.players,
-        odiserId: odiserId ?? this.odiserId,
+        winnerId: winnerId ?? this.winnerId,
         createdAt: createdAt ?? this.createdAt,
         startedAt: startedAt ?? this.startedAt,
         finishedAt: finishedAt ?? this.finishedAt,

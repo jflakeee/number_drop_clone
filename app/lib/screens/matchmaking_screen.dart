@@ -110,7 +110,7 @@ class _MatchmakingScreenState extends State<MatchmakingScreen>
     // Only the first player (host) starts the battle
     final auth = AuthService.instance;
     final players = _battle!.players.values.toList();
-    if (players.isNotEmpty && players.first.odiserId == auth.userId) {
+    if (players.isNotEmpty && players.first.userId == auth.userId) {
       await BattleService.instance.startBattle(_battle!.id);
     }
   }

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
 import '../config/colors.dart';
 import '../models/game_state.dart';
+import '../screens/ranking_screen.dart';
 
 /// Widget displaying score, high score, coins, and action buttons
 class ScoreDisplay extends StatelessWidget {
@@ -31,7 +33,12 @@ class ScoreDisplay extends StatelessWidget {
                   const SizedBox(width: 3),
                   _buildIconButton(
                     Icons.leaderboard,
-                    onTap: () {},
+                    onTap: () {
+                      gameState.pause();
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const RankingScreen()),
+                      ).then((_) => gameState.resume());
+                    },
                   ),
                   const SizedBox(width: 3),
                   _buildIconButton(
@@ -41,7 +48,11 @@ class ScoreDisplay extends StatelessWidget {
                   const SizedBox(width: 3),
                   _buildIconButton(
                     Icons.share,
-                    onTap: () {},
+                    onTap: () {
+                      Share.share(
+                        'I scored ${_formatNumber(gameState.score)} points in Number Drop! Can you beat me? 🎮\nSeed: ${gameState.gameSeed}',
+                      );
+                    },
                   ),
                 ],
               ),
