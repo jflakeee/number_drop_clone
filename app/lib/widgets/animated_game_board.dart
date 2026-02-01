@@ -2,9 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../config/colors.dart';
 import '../config/constants.dart';
+import '../config/game_settings.dart';
 import '../models/block.dart';
 import '../models/game_state.dart';
 import '../services/audio_service.dart';
+import '../services/settings_service.dart';
+import '../animations/easing_curves.dart';
+import '../animations/merge_effects/merge_effect_factory.dart';
+import '../config/block_themes.dart';
 import 'animated_block_widget.dart';
 import 'score_popup.dart';
 
@@ -29,6 +34,8 @@ class _AnimatedGameBoardState extends State<AnimatedGameBoard>
   int? _droppingColumn;
   double _dropProgress = 1.0;
   AnimationController? _dropController;
+  AnimationController? _shakeController;
+  Animation<double>? _shakeAnimation;
 
   // Score popups
   final List<_ScorePopupData> _scorePopups = [];
@@ -43,26 +50,56 @@ class _AnimatedGameBoardState extends State<AnimatedGameBoard>
   @override
   void initState() {
     super.initState();
+    _initControllers();
+  }
+
+  void _initControllers() {
+    final settings = SettingsService.instance.settings;
+
     _dropController = AnimationController(
-      duration: Duration(milliseconds: GameConstants.dropDuration),
+      duration: Duration(milliseconds: settings.dropDuration),
       vsync: this,
     )..addListener(() {
         setState(() {
           _dropProgress = _dropController!.value;
         });
       });
+
+    // Screen shake controller
+    _shakeController = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
+
+    _shakeAnimation = Tween<double>(begin: 0, end: 1).animate(
+      CurvedAnimation(
+        parent: _shakeController!,
+        curve: const ShakeCurve(shakes: 3, decay: 0.5),
+      ),
+    );
   }
 
   @override
   void dispose() {
     _dropController?.dispose();
+    _shakeController?.dispose();
     super.dispose();
+  }
+
+  void _triggerShake() {
+    if (SettingsService.instance.screenShakeEnabled) {
+      _shakeController?.forward(from: 0);
+    }
   }
 
   void _handleDrop(GameState gameState, int column) async {
     if (gameState.isGameOver || gameState.isPaused) return;
     if (gameState.currentBlock == null) return;
-    if (_droppingColumn != null) return; // 이미 떨어지는 중이면 무시
+
+    // Check if drop during merge is allowed
+    final allowDropDuringMerge = SettingsService.instance.allowDropDuringMerge;
+    if (_droppingColumn != null && !allowDropDuringMerge) return; // 이미 떨어지는 중이면 무시
+    if (gameState.isMerging && !allowDropDuringMerge) return; // 병합 중이면 무시
 
     setState(() {
       _droppingColumn = column;
@@ -80,6 +117,7 @@ class _AnimatedGameBoardState extends State<AnimatedGameBoard>
     // Play merge sound if score changed (meaning merge happened)
     if (gameState.score > prevScore) {
       AudioService.instance.playMerge();
+      _triggerShake();
     }
 
     // Play combo sound if combo increased
@@ -110,142 +148,162 @@ class _AnimatedGameBoardState extends State<AnimatedGameBoard>
   Widget build(BuildContext context) {
     return Consumer<GameState>(
       builder: (context, gameState, child) {
-        return LayoutBuilder(
-          builder: (context, constraints) {
-            final boardWidth = constraints.maxWidth;
-            final boardHeight = constraints.maxHeight;
-            final cellWidth = boardWidth / GameConstants.columns;
-            final cellHeight = boardHeight / GameConstants.rows;
-            final cellSize = cellWidth < cellHeight ? cellWidth : cellHeight;
+        return ListenableBuilder(
+          listenable: SettingsService.instance,
+          builder: (context, _) {
+            final settings = SettingsService.instance.settings;
 
-            return MouseRegion(
-              onHover: (event) {
-                if (widget.hammerMode) return;
-                if (gameState.isGameOver || gameState.isPaused) return;
+            return LayoutBuilder(
+              builder: (context, constraints) {
+                final boardWidth = constraints.maxWidth;
+                final boardHeight = constraints.maxHeight;
+                final cellWidth = boardWidth / GameConstants.columns;
+                final cellHeight = boardHeight / GameConstants.rows;
+                final cellSize = cellWidth < cellHeight ? cellWidth : cellHeight;
 
-                final column = (event.localPosition.dx / cellWidth).floor();
-                if (column >= 0 && column < GameConstants.columns) {
-                  if (_hoveredColumn != column) {
-                    setState(() {
-                      _hoveredColumn = column;
-                    });
-                  }
-                }
-              },
-              onExit: (_) {
-                if (_hoveredColumn != null) {
-                  setState(() {
-                    _hoveredColumn = null;
-                  });
-                }
-              },
-              child: GestureDetector(
-              onTapDown: (details) {
-                if (gameState.isGameOver || gameState.isPaused) return;
-                if (_droppingColumn != null) return; // 떨어지는 중이면 무시
+                return AnimatedBuilder(
+                  animation: _shakeAnimation ?? const AlwaysStoppedAnimation(0),
+                  builder: (context, child) {
+                    final shakeOffset = (_shakeAnimation?.value ?? 0) * 3;
 
-                final column = (details.localPosition.dx / cellWidth).floor();
-                final row = (details.localPosition.dy / cellHeight).floor();
+                    return Transform.translate(
+                      offset: Offset(shakeOffset, 0),
+                      child: MouseRegion(
+                        onHover: (event) {
+                          if (widget.hammerMode) return;
+                          if (gameState.isGameOver || gameState.isPaused) return;
 
-                // Hammer mode
-                if (widget.hammerMode) {
-                  if (row >= 0 &&
-                      row < GameConstants.rows &&
-                      column >= 0 &&
-                      column < GameConstants.columns) {
-                    widget.onHammerUse?.call(row, column);
-                  }
-                  return;
-                }
+                          final column = (event.localPosition.dx / cellWidth).floor();
+                          if (column >= 0 && column < GameConstants.columns) {
+                            if (_hoveredColumn != column) {
+                              setState(() {
+                                _hoveredColumn = column;
+                              });
+                            }
+                          }
+                        },
+                        onExit: (_) {
+                          if (_hoveredColumn != null) {
+                            setState(() {
+                              _hoveredColumn = null;
+                            });
+                          }
+                        },
+                        child: GestureDetector(
+                          onTapDown: (details) {
+                            if (gameState.isGameOver || gameState.isPaused) return;
+                            if (_droppingColumn != null) return;
 
-                // Normal mode - drop block
-                if (column >= 0 && column < GameConstants.columns) {
-                  _handleDrop(gameState, column);
-                }
-              },
-              onPanUpdate: (details) {
-                if (widget.hammerMode) return;
+                            final column = (details.localPosition.dx / cellWidth).floor();
+                            final row = (details.localPosition.dy / cellHeight).floor();
 
-                final column = (details.localPosition.dx / cellWidth).floor();
-                if (column >= 0 && column < GameConstants.columns) {
-                  setState(() {
-                    _hoveredColumn = column;
-                  });
-                }
-              },
-              onPanEnd: (_) {
-                if (widget.hammerMode) return;
-                if (_droppingColumn != null) return; // 떨어지는 중이면 무시
+                            // Hammer mode
+                            if (widget.hammerMode) {
+                              if (row >= 0 &&
+                                  row < GameConstants.rows &&
+                                  column >= 0 &&
+                                  column < GameConstants.columns) {
+                                widget.onHammerUse?.call(row, column);
+                              }
+                              return;
+                            }
 
-                if (_hoveredColumn != null &&
-                    !gameState.isGameOver &&
-                    !gameState.isPaused) {
-                  _handleDrop(gameState, _hoveredColumn!);
-                }
-                setState(() {
-                  _hoveredColumn = null;
-                });
-              },
-              child: Container(
-                decoration: BoxDecoration(
-                  color: GameColors.boardBackground,
-                  borderRadius: BorderRadius.circular(16),
-                  border: widget.hammerMode
-                      ? Border.all(color: Colors.red.withOpacity(0.5), width: 2)
-                      : Border.all(color: const Color(0xFF2A3A4A), width: 2),
-                ),
-                child: Stack(
-                  children: [
-                    // Column dividers
-                    _buildColumnDividers(boardWidth, boardHeight, cellWidth),
+                            // Normal mode - drop block
+                            if (column >= 0 && column < GameConstants.columns) {
+                              _handleDrop(gameState, column);
+                            }
+                          },
+                          onPanUpdate: (details) {
+                            if (widget.hammerMode) return;
 
-                    // Column highlight
-                    if (!widget.hammerMode && _hoveredColumn != null)
-                      _buildColumnHighlight(
-                          _hoveredColumn!, boardHeight, cellWidth),
+                            final column = (details.localPosition.dx / cellWidth).floor();
+                            if (column >= 0 && column < GameConstants.columns) {
+                              setState(() {
+                                _hoveredColumn = column;
+                              });
+                            }
+                          },
+                          onPanEnd: (_) {
+                            if (widget.hammerMode) return;
+                            if (_droppingColumn != null) return;
 
-                    // Drop shadow preview
-                    if (!widget.hammerMode &&
-                        _hoveredColumn != null &&
-                        gameState.currentBlock != null &&
-                        _droppingColumn == null)
-                      _buildDropShadow(
-                        gameState,
-                        _hoveredColumn!,
-                        cellWidth,
-                        cellHeight,
-                        cellSize,
+                            if (_hoveredColumn != null &&
+                                !gameState.isGameOver &&
+                                !gameState.isPaused) {
+                              _handleDrop(gameState, _hoveredColumn!);
+                            }
+                            setState(() {
+                              _hoveredColumn = null;
+                            });
+                          },
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: GameColors.boardBackground,
+                              borderRadius: BorderRadius.circular(16),
+                              border: widget.hammerMode
+                                  ? Border.all(color: Colors.red.withOpacity(0.5), width: 2)
+                                  : Border.all(color: const Color(0xFF2A3A4A), width: 2),
+                            ),
+                            child: Stack(
+                              children: [
+                                // Column dividers
+                                _buildColumnDividers(boardWidth, boardHeight, cellWidth),
+
+                                // Column highlight
+                                if (!widget.hammerMode && _hoveredColumn != null)
+                                  _buildColumnHighlight(
+                                      _hoveredColumn!, boardHeight, cellWidth),
+
+                                // Drop shadow preview (ghost block)
+                                if (!widget.hammerMode &&
+                                    _hoveredColumn != null &&
+                                    gameState.currentBlock != null &&
+                                    _droppingColumn == null &&
+                                    settings.showGhostBlock)
+                                  _buildDropShadow(
+                                    gameState,
+                                    _hoveredColumn!,
+                                    cellWidth,
+                                    cellHeight,
+                                    cellSize,
+                                  ),
+
+                                // Placed blocks
+                                ..._buildPlacedBlocks(
+                                  gameState,
+                                  cellWidth,
+                                  cellHeight,
+                                  cellSize,
+                                  settings,
+                                ),
+
+                                // Merge animations
+                                ..._buildMergeAnimations(
+                                  gameState,
+                                  cellWidth,
+                                  cellHeight,
+                                  cellSize,
+                                  settings,
+                                ),
+
+                                // Score popups
+                                ..._scorePopups.map((popup) {
+                                  return ScorePopup(
+                                    key: ValueKey(popup.id),
+                                    score: popup.score,
+                                    position: popup.position,
+                                    onComplete: () => _removeScorePopup(popup.id),
+                                  );
+                                }),
+                              ],
+                            ),
+                          ),
+                        ),
                       ),
-
-                    // Placed blocks
-                    ..._buildPlacedBlocks(
-                      gameState,
-                      cellWidth,
-                      cellHeight,
-                      cellSize,
-                    ),
-
-                    // Merge animations
-                    ..._buildMergeAnimations(
-                      gameState,
-                      cellWidth,
-                      cellHeight,
-                      cellSize,
-                    ),
-
-                    // Score popups
-                    ..._scorePopups.map((popup) {
-                      return ScorePopup(
-                        key: ValueKey(popup.id),
-                        score: popup.score,
-                        position: popup.position,
-                        onComplete: () => _removeScorePopup(popup.id),
-                      );
-                    }),
-                  ],
-                ),
-              ),
-            ),
+                    );
+                  },
+                );
+              },
             );
           },
         );
@@ -351,8 +409,10 @@ class _AnimatedGameBoardState extends State<AnimatedGameBoard>
     double cellWidth,
     double cellHeight,
     double cellSize,
+    GameSettings settings,
   ) {
     final widgets = <Widget>[];
+    final easingType = settings.easingType;
 
     for (int row = 0; row < GameConstants.rows; row++) {
       for (int col = 0; col < GameConstants.columns; col++) {
@@ -367,26 +427,31 @@ class _AnimatedGameBoardState extends State<AnimatedGameBoard>
         // Check if this block is currently merging
         final isMergingBlock = gameState.mergingBlockIds.contains(block.id);
         final duration = isMergingBlock
-            ? GameConstants.mergeMoveDuration
-            : GameConstants.gravityDuration;
+            ? settings.mergeMoveDuration
+            : settings.gravityDuration;
+
+        // Get appropriate curve based on settings
+        final curve = isMergingBlock
+            ? GameEasings.getMergeCurve(easingType)
+            : GameEasings.getGravityCurve(easingType);
 
         widgets.add(
           AnimatedPositioned(
             key: ValueKey(block.id),
             duration: Duration(milliseconds: duration),
-            curve: isMergingBlock ? Curves.easeOutCubic : Curves.easeOut,
+            curve: curve,
             left: block.column * cellWidth + (cellWidth - cellSize) / 2,
             top: block.row * cellHeight + (cellHeight - cellSize) / 2,
             child: GestureDetector(
               onTap: widget.hammerMode
                   ? () => widget.onHammerUse?.call(block.row, block.column)
                   : null,
-              child: AnimatedBlockWidget(
+              child: _buildBlockWithEffect(
                 block: block,
                 size: cellSize - 4,
                 isHammerTarget: widget.hammerMode,
-                isNew: false,
                 isMerging: isMergingBlock,
+                settings: settings,
               ),
             ),
           ),
@@ -397,17 +462,45 @@ class _AnimatedGameBoardState extends State<AnimatedGameBoard>
     return widgets;
   }
 
+  Widget _buildBlockWithEffect({
+    required Block block,
+    required double size,
+    required bool isHammerTarget,
+    required bool isMerging,
+    required GameSettings settings,
+  }) {
+    Widget blockWidget = AnimatedBlockWidget(
+      block: block,
+      size: size,
+      isHammerTarget: isHammerTarget,
+      isNew: false,
+      isMerging: isMerging,
+    );
+
+    // Apply merge effect if merging
+    if (isMerging) {
+      final effect = MergeEffectFactory.create(settings.mergeAnimation);
+      // Note: In a full implementation, we would need to track the merge animation
+      // progress. For now, the effect is applied through AnimatedBlockWidget.
+    }
+
+    return blockWidget;
+  }
+
   List<Widget> _buildMergeAnimations(
     GameState gameState,
     double cellWidth,
     double cellHeight,
     double cellSize,
+    GameSettings settings,
   ) {
     if (!gameState.isMerging || gameState.mergeAnimations.isEmpty) {
       return [];
     }
 
     final widgets = <Widget>[];
+    final easingType = settings.easingType;
+    final mergeEffect = MergeEffectFactory.create(settings.mergeAnimation);
 
     // Add dropping block animation for below-merge (gravity effect)
     if (gameState.droppingBlock != null) {
@@ -416,40 +509,53 @@ class _AnimatedGameBoardState extends State<AnimatedGameBoard>
         TweenAnimationBuilder<double>(
           key: ValueKey('dropping_${drop.id}'),
           tween: Tween<double>(begin: 0.0, end: 1.0),
-          duration: Duration(milliseconds: GameConstants.mergeMoveDuration),
-          curve: Curves.easeIn, // Gravity-like acceleration
+          duration: Duration(milliseconds: settings.mergeMoveDuration),
+          curve: GameEasings.getGravityCurve(easingType),
           builder: (context, value, child) {
             final startY = drop.startRow * cellHeight + (cellHeight - cellSize) / 2;
-            // Use fractional meetRow for smooth animation
             final meetY = drop.meetRowFraction * cellHeight + (cellHeight - cellSize) / 2;
-            // Final position is where the below block was
             final finalY = drop.belowBlockRow * cellHeight + (cellHeight - cellSize) / 2;
             final x = drop.column * cellWidth + (cellWidth - cellSize) / 2;
 
-            // Phase 1 (0 -> 0.5): Fall to meeting point, show original value
-            // Phase 2 (0.5 -> 1): Continue to final position with merged value, scale pulse
             double currentY;
             int displayValue;
             double scale = 1.0;
 
             if (value < 0.5) {
-              // Phase 1: Fall to meeting point
-              final phase1Progress = value * 2; // 0 to 1
+              final phase1Progress = value * 2;
               currentY = startY + (meetY - startY) * phase1Progress;
               displayValue = drop.value;
             } else {
-              // Phase 2: Continue from meeting point to final position with merged value
-              final phase2Progress = (value - 0.5) * 2; // 0 to 1
+              final phase2Progress = (value - 0.5) * 2;
               currentY = meetY + (finalY - meetY) * phase2Progress;
               displayValue = drop.mergedValue;
 
-              // Scale pulse effect when showing merged value
-              // Pulse: grow then shrink
               if (phase2Progress < 0.5) {
-                scale = 1.0 + 0.2 * (phase2Progress * 2); // 1.0 -> 1.2
+                scale = 1.0 + 0.2 * (phase2Progress * 2);
               } else {
-                scale = 1.2 - 0.2 * ((phase2Progress - 0.5) * 2); // 1.2 -> 1.0
+                scale = 1.2 - 0.2 * ((phase2Progress - 0.5) * 2);
               }
+            }
+
+            Widget blockWidget = AnimatedBlockWidget(
+              block: Block(
+                value: displayValue,
+                row: drop.belowBlockRow,
+                column: drop.column,
+                id: drop.id,
+              ),
+              size: cellSize - 4,
+            );
+
+            // Apply merge effect during phase 2
+            if (value >= 0.5) {
+              final effectProgress = (value - 0.5) * 2;
+              final themeData = BlockThemes.getTheme(settings.blockTheme);
+              blockWidget = mergeEffect.build(
+                blockWidget,
+                AlwaysStoppedAnimation(effectProgress),
+                themeData.getColor(displayValue),
+              );
             }
 
             return Positioned(
@@ -457,15 +563,7 @@ class _AnimatedGameBoardState extends State<AnimatedGameBoard>
               top: currentY,
               child: Transform.scale(
                 scale: scale,
-                child: AnimatedBlockWidget(
-                  block: Block(
-                    value: displayValue,
-                    row: drop.belowBlockRow,
-                    column: drop.column,
-                    id: drop.id,
-                  ),
-                  size: cellSize - 4,
-                ),
+                child: blockWidget,
               ),
             );
           },
@@ -475,30 +573,22 @@ class _AnimatedGameBoardState extends State<AnimatedGameBoard>
 
     // Add merge animations for other blocks
     for (final anim in gameState.mergeAnimations) {
-      // For below merges: move up halfway (magnet effect), then fade out
       if (anim.isBelowMerge) {
         widgets.add(
           TweenAnimationBuilder<double>(
             key: ValueKey('merge_below_${anim.id}'),
             tween: Tween<double>(begin: 0.0, end: 1.0),
-            duration: Duration(milliseconds: GameConstants.mergeMoveDuration),
-            curve: Curves.easeOut, // Magnet-like deceleration as it approaches
+            duration: Duration(milliseconds: settings.mergeMoveDuration),
+            curve: GameEasings.getMergeCurve(easingType),
             builder: (context, value, child) {
               final startX = anim.fromColumn * cellWidth + (cellWidth - cellSize) / 2;
               final startY = anim.fromRow * cellHeight + (cellHeight - cellSize) / 2;
               final targetY = anim.toRow * cellHeight + (cellHeight - cellSize) / 2;
 
-              // Calculate meeting point (halfway between below block and dropped block)
               final meetY = (startY + targetY) / 2;
-
-              // Move up to meeting point in first half of animation
               final moveProgress = value < 0.5 ? value * 2 : 1.0;
               final currentY = startY + (meetY - startY) * moveProgress;
-
-              // Fade out after meeting point (50% of animation)
               final opacity = value < 0.5 ? 1.0 : 1.0 - ((value - 0.5) * 2);
-
-              // Scale down when fading
               final scale = value < 0.5 ? 1.0 : 1.0 - ((value - 0.5) * 0.6);
 
               return Positioned(
@@ -524,44 +614,36 @@ class _AnimatedGameBoardState extends State<AnimatedGameBoard>
           ),
         );
       } else {
-        // Normal merge animation (blocks move toward target)
-        // L-shape movement: horizontal first, then vertical (no diagonal)
         widgets.add(
           TweenAnimationBuilder<double>(
             key: ValueKey('merge_${anim.id}'),
             tween: Tween<double>(begin: 0.0, end: 1.0),
-            duration: Duration(milliseconds: GameConstants.mergeMoveDuration),
-            curve: Curves.easeOutCubic,
+            duration: Duration(milliseconds: settings.mergeMoveDuration),
+            curve: GameEasings.getMergeCurve(easingType),
             builder: (context, value, child) {
               final startX = anim.fromColumn * cellWidth + (cellWidth - cellSize) / 2;
               final startY = anim.fromRow * cellHeight + (cellHeight - cellSize) / 2;
               final endX = anim.toColumn * cellWidth + (cellWidth - cellSize) / 2;
               final endY = anim.toRow * cellHeight + (cellHeight - cellSize) / 2;
 
-              // L-shape movement: move horizontally first (0-0.5), then vertically (0.5-1)
               double currentX;
               double currentY;
 
               if (startX != endX && startY != endY) {
-                // Diagonal case: use L-shape movement
                 if (value < 0.5) {
-                  // First half: move horizontally
                   final hProgress = value * 2;
                   currentX = startX + (endX - startX) * hProgress;
                   currentY = startY;
                 } else {
-                  // Second half: move vertically
                   final vProgress = (value - 0.5) * 2;
                   currentX = endX;
                   currentY = startY + (endY - startY) * vProgress;
                 }
               } else {
-                // Same row or column: direct movement
                 currentX = startX + (endX - startX) * value;
                 currentY = startY + (endY - startY) * value;
               }
 
-              // Fade out and scale down as it approaches target
               final opacity = 1.0 - (value * 0.3);
               final scale = 1.0 - (value * 0.2);
 

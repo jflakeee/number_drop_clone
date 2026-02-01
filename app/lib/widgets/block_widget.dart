@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/block.dart';
+import '../config/block_themes.dart';
+import '../services/settings_service.dart';
 
 /// Widget that displays a single block
 class BlockWidget extends StatelessWidget {
@@ -18,13 +20,17 @@ class BlockWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final themeData = BlockThemes.getTheme(SettingsService.instance.blockTheme);
+    final themeColor = themeData.getColor(block.value);
+    final themeGradient = themeData.getGradient(block.value);
+
     return Container(
       width: size,
       height: size,
       margin: const EdgeInsets.all(2),
       decoration: BoxDecoration(
-        color: showShadow ? block.color.withOpacity(0.3) : null,
-        gradient: showShadow ? null : block.gradient,
+        color: showShadow ? themeColor.withOpacity(0.3 * themeData.opacity) : null,
+        gradient: showShadow ? null : themeGradient,
         borderRadius: BorderRadius.circular(8),
         border: isHammerTarget
             ? Border.all(color: Colors.red, width: 2)
@@ -37,22 +43,31 @@ class BlockWidget extends StatelessWidget {
                   spreadRadius: 1,
                 ),
               ]
-            : block.hasGlow && !showShadow
+            : (themeData.hasGlow || block.hasGlow) && !showShadow
                 ? [
                     BoxShadow(
-                      color: block.color.withOpacity(0.6),
+                      color: themeColor.withOpacity(0.6),
                       blurRadius: 12,
                       spreadRadius: 2,
                     ),
                   ]
-                : null,
+                : themeData.hasReflection
+                    ? [
+                        BoxShadow(
+                          color: Colors.white.withOpacity(0.1),
+                          blurRadius: 4,
+                          spreadRadius: 0,
+                          offset: const Offset(-2, -2),
+                        ),
+                      ]
+                    : null,
       ),
       child: showShadow
           ? null
           : Container(
               decoration: BoxDecoration(
-                color: block.gradient == null ? block.color : null,
-                gradient: block.gradient,
+                color: themeGradient == null ? themeColor.withOpacity(themeData.opacity) : null,
+                gradient: themeGradient,
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Stack(

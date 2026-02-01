@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/block.dart';
-import '../config/constants.dart';
+import '../config/block_themes.dart';
+import '../services/settings_service.dart';
 
 /// Animated block widget with drop, merge, and glow effects
 class AnimatedBlockWidget extends StatefulWidget {
@@ -45,7 +46,7 @@ class _AnimatedBlockWidgetState extends State<AnimatedBlockWidget>
 
     // Drop animation controller
     _dropController = AnimationController(
-      duration: Duration(milliseconds: GameConstants.dropDuration),
+      duration: Duration(milliseconds: SettingsService.instance.dropDuration),
       vsync: this,
     );
 
@@ -55,7 +56,7 @@ class _AnimatedBlockWidgetState extends State<AnimatedBlockWidget>
 
     // Merge animation controller
     _mergeController = AnimationController(
-      duration: Duration(milliseconds: GameConstants.mergeDuration),
+      duration: Duration(milliseconds: SettingsService.instance.mergeDuration),
       vsync: this,
     );
 
@@ -182,12 +183,15 @@ class _AnimatedBlockWidgetState extends State<AnimatedBlockWidget>
   }
 
   Widget _buildShadowBlock() {
+    final themeData = BlockThemes.getTheme(SettingsService.instance.blockTheme);
+    final color = themeData.getColor(widget.block.value);
+
     return Container(
       width: widget.size,
       height: widget.size,
       margin: const EdgeInsets.all(2),
       decoration: BoxDecoration(
-        color: widget.block.color.withOpacity(0.3),
+        color: color.withOpacity(0.3 * themeData.opacity),
         borderRadius: BorderRadius.circular(8),
       ),
     );
@@ -195,6 +199,9 @@ class _AnimatedBlockWidgetState extends State<AnimatedBlockWidget>
 
   Widget _buildBlock() {
     final hasCrown = widget.block.hasCrown;
+    final themeData = BlockThemes.getTheme(SettingsService.instance.blockTheme);
+    final themeColor = themeData.getColor(widget.block.value);
+    final themeGradient = themeData.getGradient(widget.block.value);
 
     return Stack(
       clipBehavior: Clip.none,
@@ -205,15 +212,15 @@ class _AnimatedBlockWidgetState extends State<AnimatedBlockWidget>
           height: widget.size,
           margin: const EdgeInsets.all(2),
           decoration: BoxDecoration(
-            color: widget.block.gradient == null ? widget.block.color : null,
-            gradient: widget.block.gradient,
+            color: themeGradient == null ? themeColor.withOpacity(themeData.opacity) : null,
+            gradient: themeGradient,
             borderRadius: BorderRadius.circular(8),
             border: widget.isHammerTarget
                 ? Border.all(color: Colors.red, width: 2)
                 : hasCrown
                     ? Border.all(color: const Color(0xFFFFD700), width: 2)
                     : null,
-            boxShadow: _buildBoxShadow(),
+            boxShadow: _buildBoxShadow(themeColor, themeData),
           ),
           child: Stack(
             alignment: Alignment.center,
@@ -314,7 +321,7 @@ class _AnimatedBlockWidgetState extends State<AnimatedBlockWidget>
     );
   }
 
-  List<BoxShadow>? _buildBoxShadow() {
+  List<BoxShadow>? _buildBoxShadow(Color themeColor, BlockThemeData themeData) {
     if (widget.isHammerTarget) {
       return [
         BoxShadow(
@@ -325,12 +332,25 @@ class _AnimatedBlockWidgetState extends State<AnimatedBlockWidget>
       ];
     }
 
-    if (widget.block.hasGlow) {
+    // Theme-specific glow
+    if (themeData.hasGlow || widget.block.hasGlow) {
       return [
         BoxShadow(
-          color: widget.block.color.withOpacity(_glowAnimation.value),
+          color: themeColor.withOpacity(_glowAnimation.value * 0.8),
           blurRadius: 12 + (_glowAnimation.value * 8),
           spreadRadius: 2 + (_glowAnimation.value * 2),
+        ),
+      ];
+    }
+
+    // Reflection effect for themes that support it
+    if (themeData.hasReflection) {
+      return [
+        BoxShadow(
+          color: Colors.white.withOpacity(0.1),
+          blurRadius: 4,
+          spreadRadius: 0,
+          offset: const Offset(-2, -2),
         ),
       ];
     }

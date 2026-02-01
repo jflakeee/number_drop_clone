@@ -114,13 +114,35 @@ Audio files must exist in both:
 - Grid: 5 columns × 8 rows
 - Drop values: [2, 4, 8, 16, 32, 64] with weights [40, 30, 15, 10, 4, 1]
 - Hammer cost: 100 coins
+- Shuffle cost: 120 coins
+- Undo cost: 50 coins
+
+## Game Features
+
+### Bottom Controls
+- **Piggy Bank**: Coin savings display
+- **AD Button**: Watch ad for coins (+109)
+- **Shuffle**: Swap current/next block (120 coins)
+- **Hammer**: Remove any block (100 coins)
+
+### Top Right Icons
+1. **Pause**: Pause game
+2. **Leaderboard**: View rankings (pauses game)
+3. **Undo**: Restore last move (1x per move)
+4. **Share**: Share score via `share_plus` package
 
 ## Firebase Setup Notes
 
-Required Firestore indexes for daily/weekly rankings:
+Required Firestore indexes:
 - Collection: `rankings`, Fields: `updatedAt` (DESC), `score` (DESC)
+- Collection: `battles`, Fields: `status` (ASC), `createdAt` (ASC)
 
 Firebase config: `lib/firebase_options.dart` (includes `databaseURL` for Realtime DB)
+
+### Battle Matchmaking
+- Searches for waiting battles created within last 5 minutes
+- Auto-creates new battle if none found
+- Uses Firestore transaction for safe player joining
 
 ## Production Deployment
 

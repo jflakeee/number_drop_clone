@@ -12,6 +12,7 @@ import 'services/ad_service.dart';
 import 'services/iap_service.dart';
 import 'services/offline_queue_service.dart';
 import 'services/auth_service.dart';
+import 'services/settings_service.dart';
 import 'firebase_options.dart';
 
 void main() async {
@@ -24,6 +25,7 @@ void main() async {
 
   // Initialize services
   await StorageService.instance.init();
+  await SettingsService.instance.init();
   await AudioService.instance.init();
   await VibrationService.instance.init();
   await AdService.instance.init();
