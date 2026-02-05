@@ -44,19 +44,23 @@ class _DailyChallengeScreenState extends State<DailyChallengeScreen> {
   Future<void> _startDailyChallenge() async {
     // Load today's stats
     final stats = await StorageService.instance.getDailyChallengeStats();
-    setState(() {
-      _todaysBestScore = stats['highScore'] ?? 0;
-      _todaysPlays = stats['plays'] ?? 0;
-    });
-
-    // Start daily challenge game
     if (mounted) {
-      final gameState = context.read<GameState>();
-      gameState.newDailyChallenge();
-      _loadUserData();
-      // Start BGM
-      AudioService.instance.playBGM();
+      setState(() {
+        _todaysBestScore = stats['highScore'] ?? 0;
+        _todaysPlays = stats['plays'] ?? 0;
+      });
     }
+
+    // Start daily challenge game using addPostFrameCallback to avoid setState during build
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        final gameState = context.read<GameState>();
+        gameState.newDailyChallenge();
+        _loadUserData();
+        // Start BGM
+        AudioService.instance.playBGM();
+      }
+    });
   }
 
   @override

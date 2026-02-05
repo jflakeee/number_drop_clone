@@ -104,7 +104,12 @@ class _AnimatedGameBoardState extends State<AnimatedGameBoard>
 
     setState(() {
       _droppingColumn = column;
+      _dropProgress = 0.0;
     });
+
+    // Update drop controller duration from settings
+    final dropDuration = SettingsService.instance.dropDuration;
+    _dropController?.duration = Duration(milliseconds: dropDuration);
 
     // Play drop sound and light vibration
     AudioService.instance.playDrop();
@@ -124,7 +129,12 @@ class _AnimatedGameBoardState extends State<AnimatedGameBoard>
       }
     }
 
-    // Drop the block immediately (no animation)
+    // Animate the drop if duration > 0
+    if (dropDuration > 0) {
+      await _dropController?.forward(from: 0.0);
+    }
+
+    // Drop the block after animation
     await gameState.dropBlock(column);
 
     // Check for new highest block (512 or higher)
@@ -300,6 +310,18 @@ class _AnimatedGameBoardState extends State<AnimatedGameBoard>
                                     cellSize,
                                   ),
 
+                                // Dropping block animation
+                                if (_droppingColumn != null &&
+                                    gameState.currentBlock != null &&
+                                    _dropProgress < 1.0)
+                                  _buildDroppingBlock(
+                                    gameState,
+                                    _droppingColumn!,
+                                    cellWidth,
+                                    cellHeight,
+                                    cellSize,
+                                  ),
+
                                 // Placed blocks
                                 ..._buildPlacedBlocks(
                                   gameState,
@@ -458,8 +480,9 @@ class _AnimatedGameBoardState extends State<AnimatedGameBoard>
 
         // Check if this block is currently merging
         final isMergingBlock = gameState.mergingBlockIds.contains(block.id);
+        // Use mergeDuration for merge animations (from settings UI "Merge Speed")
         final duration = isMergingBlock
-            ? settings.mergeMoveDuration
+            ? settings.mergeDuration
             : settings.gravityDuration;
 
         // Get appropriate curve based on settings
@@ -541,7 +564,7 @@ class _AnimatedGameBoardState extends State<AnimatedGameBoard>
         TweenAnimationBuilder<double>(
           key: ValueKey('dropping_${drop.id}'),
           tween: Tween<double>(begin: 0.0, end: 1.0),
-          duration: Duration(milliseconds: settings.mergeMoveDuration),
+          duration: Duration(milliseconds: settings.mergeDuration),
           curve: GameEasings.getGravityCurve(easingType),
           builder: (context, value, child) {
             final startY = drop.startRow * cellHeight + (cellHeight - cellSize) / 2;
@@ -610,7 +633,7 @@ class _AnimatedGameBoardState extends State<AnimatedGameBoard>
           TweenAnimationBuilder<double>(
             key: ValueKey('merge_below_${anim.id}'),
             tween: Tween<double>(begin: 0.0, end: 1.0),
-            duration: Duration(milliseconds: settings.mergeMoveDuration),
+            duration: Duration(milliseconds: settings.mergeDuration),
             curve: GameEasings.getMergeCurve(easingType),
             builder: (context, value, child) {
               final startX = anim.fromColumn * cellWidth + (cellWidth - cellSize) / 2;
@@ -650,7 +673,7 @@ class _AnimatedGameBoardState extends State<AnimatedGameBoard>
           TweenAnimationBuilder<double>(
             key: ValueKey('merge_${anim.id}'),
             tween: Tween<double>(begin: 0.0, end: 1.0),
-            duration: Duration(milliseconds: settings.mergeMoveDuration),
+            duration: Duration(milliseconds: settings.mergeDuration),
             curve: GameEasings.getMergeCurve(easingType),
             builder: (context, value, child) {
               final startX = anim.fromColumn * cellWidth + (cellWidth - cellSize) / 2;

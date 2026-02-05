@@ -149,6 +149,9 @@ class AudioService {
     _bgmEnabled = enabled;
     if (!_bgmEnabled) {
       stopBGM();
+    } else {
+      // Auto-play BGM when enabled
+      playBGM();
     }
   }
 

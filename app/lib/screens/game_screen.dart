@@ -41,12 +41,16 @@ class _GameScreenState extends State<GameScreen> {
     super.didChangeDependencies();
     if (!_isInitialized) {
       _isInitialized = true;
-      // Start new game immediately when screen loads
-      final gameState = context.read<GameState>();
-      gameState.newGame();
-      _loadUserData();
-      // Start BGM
-      AudioService.instance.playBGM();
+      // Use addPostFrameCallback to avoid setState during build
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          final gameState = context.read<GameState>();
+          gameState.newGame();
+          _loadUserData();
+          // Start BGM (may fail if file doesn't exist)
+          AudioService.instance.playBGM();
+        }
+      });
     }
   }
 
