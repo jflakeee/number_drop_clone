@@ -252,3 +252,159 @@ Future<Map<String, dynamic>> getDailyChallengeStats()
 1. **BGM 파일 없음** - `bgm.mp3`, `bgm.wav` 파일을 직접 추가해야 함
    - 무료 BGM 사이트에서 다운로드 후 추가 권장
    - 파일 경로: `assets/audio/bgm.mp3`, `web/assets/audio/bgm.wav`
+
+---
+
+## 8. setState during build 에러 수정 및 설정 완전 구현
+
+### 8.1 setState during build 에러 수정
+
+**문제점:** 게임 화면 진입 시 "setState() or markNeedsBuild() called during build" 에러 발생
+
+**원인:** `didChangeDependencies()`에서 `gameState.newGame()` 호출 시 `notifyListeners()`가 빌드 중에 실행됨
+
+**수정 내용:**
+- `game_screen.dart`: `WidgetsBinding.instance.addPostFrameCallback()` 적용
+- `daily_challenge_screen.dart`: 동일한 패턴 적용
+
+**수정 코드 패턴:**
+```dart
+@override
+void didChangeDependencies() {
+  super.didChangeDependencies();
+  if (!_isInitialized) {
+    _isInitialized = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        final gameState = context.read<GameState>();
+        gameState.newGame();
+        // ... 기타 초기화
+      }
+    });
+  }
+}
+```
+
+### 8.2 Drop Speed 설정 완전 구현
+
+**문제점:** 설정 UI에서 Drop Speed를 변경해도 실제 드롭 애니메이션에 적용되지 않음
+
+**수정 내용:**
+- `animated_game_board.dart`의 `_handleDrop()` 함수 수정
+- `_dropController` 활용하여 실제 드롭 애니메이션 구현
+- 설정값에 따라 드롭 속도 동적 변경
+
+**수정 코드:**
+```dart
+void _handleDrop(GameState gameState, int column) async {
+  setState(() {
+    _droppingColumn = column;
+    _dropProgress = 0.0;
+  });
+
+  // Update drop controller duration from settings
+  final dropDuration = SettingsService.instance.dropDuration;
+  _dropController?.duration = Duration(milliseconds: dropDuration);
+
+  // Animate the drop if duration > 0
+  if (dropDuration > 0) {
+    await _dropController?.forward(from: 0.0);
+  }
+
+  // Drop the block after animation
+  await gameState.dropBlock(column);
+  // ...
+}
+```
+
+**Stack에 드롭 애니메이션 위젯 추가:**
+```dart
+// Dropping block animation
+if (_droppingColumn != null &&
+    gameState.currentBlock != null &&
+    _dropProgress < 1.0)
+  _buildDroppingBlock(
+    gameState,
+    _droppingColumn!,
+    cellWidth,
+    cellHeight,
+    cellSize,
+  ),
+```
+
+### 8.3 Merge Speed 설정 구현
+
+**문제점:** 설정 UI에서 Merge Speed를 변경하지만, 실제로는 `mergeMoveDuration`이 사용됨
+
+**수정 내용:**
+- `animated_game_board.dart`에서 `settings.mergeMoveDuration` → `settings.mergeDuration` 변경
+- 총 4군데 수정 (AnimatedPositioned, TweenAnimationBuilder 3곳)
+
+**수정 위치:**
+1. `_buildPlacedBlocks()` - 병합 중인 블록 duration
+2. `_buildMergeAnimations()` - 드롭 블록 애니메이션
+3. `_buildMergeAnimations()` - below merge 애니메이션
+4. `_buildMergeAnimations()` - 일반 merge 애니메이션
+
+### 8.4 BGM 설정 ON 시 자동 재생
+
+**문제점:** 설정에서 BGM을 ON으로 변경해도 바로 재생되지 않음
+
+**수정 내용:**
+- `audio_service.dart`의 `setBGMEnabled()` 메서드 수정
+- enabled=true일 때 자동으로 `playBGM()` 호출
+
+**수정 코드:**
+```dart
+void setBGMEnabled(bool enabled) {
+  _bgmEnabled = enabled;
+  if (!_bgmEnabled) {
+    stopBGM();
+  } else {
+    // Auto-play BGM when enabled
+    playBGM();
+  }
+}
+```
+
+### 8.5 기타 정리
+
+**불필요한 import 제거:**
+- `game_screen.dart`: `package:flutter/scheduler.dart` 제거 (flutter/material.dart에서 이미 제공)
+
+### 8.6 수정된 파일 목록
+
+| 파일 | 수정 내용 |
+|------|----------|
+| `game_screen.dart` | addPostFrameCallback 적용, scheduler import 제거 |
+| `daily_challenge_screen.dart` | addPostFrameCallback 적용 |
+| `audio_service.dart` | BGM ON 시 자동 재생 |
+| `animated_game_board.dart` | Drop Speed 애니메이션, Merge Speed 설정 적용 |
+
+### 8.7 최종 설정 기능 구현 상태
+
+| 설정 | 상태 | 비고 |
+|------|------|------|
+| Drop Speed | ✅ 완료 | 드롭 애니메이션 적용 |
+| Merge Speed | ✅ 완료 | mergeDuration 사용 |
+| Gravity Speed | ✅ 완료 | 기존 구현 |
+| Ghost Block Preview | ✅ 완료 | 기존 구현 |
+| Screen Shake | ✅ 완료 | 기존 구현 |
+| Easing Style | ✅ 완료 | 기존 구현 |
+| Merge Effect | ✅ 완료 | 기존 구현 |
+| Block Theme | ✅ 완료 | 기존 구현 |
+| Background Music | ✅ 완료 | 자동 재생 추가 |
+| Sound Effects | ✅ 완료 | 기존 구현 |
+| Vibration | ✅ 완료 | 기존 구현 |
+
+---
+
+## Git 커밋 이력
+
+| 커밋 | 설명 |
+|------|------|
+| `0bc5fc8` | Fix settings implementation and setState during build errors |
+| `a6b1bad` | Add vibration feedback, high value sound, and BGM auto-play |
+| `597c105` | Implement Share and Daily Challenge features |
+| `82ac757` | Add changelog documentation |
+| `d35f973` | Implement comprehensive settings system with themes and animations |
