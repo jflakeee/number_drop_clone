@@ -108,6 +108,22 @@ Audio files must exist in both:
 - Below-block merges: blocks move up halfway then disappear
 - `AnimatedGameBoard` handles rendering during animations
 
+### Settings System
+`SettingsService` manages customizable gameplay options with persistence:
+- **Durations**: Drop/Merge/Gravity speed (0-1000ms)
+- **Easing Types**: gravity, magnet, cotton, metal, jelly
+- **Merge Effects**: jelly, water, fire, metalSpark, electricSpark, iceShatter, lightScatter, gemSparkle
+- **Block Themes**: classic, metal, gem, glass, gravel, wood, soil, water, fire
+
+Configuration in `lib/config/game_settings.dart`, themes in `lib/config/block_themes.dart`
+
+### Daily Challenge
+Same-seed daily competition mode:
+- Seed generated from date: `year*10000 + month*100 + day`
+- Tracks daily plays and high score per user
+- `daily_challenge_screen.dart` - dedicated game screen
+- `UserData.getTodaysSeed()` / `StorageService.recordDailyChallengeScore()`
+
 ## Key Constants
 
 `lib/config/constants.dart`:
@@ -144,9 +160,42 @@ Firebase config: `lib/firebase_options.dart` (includes `databaseURL` for Realtim
 - Auto-creates new battle if none found
 - Uses Firestore transaction for safe player joining
 
+## Important Patterns
+
+### Avoiding setState during build
+When initializing game state in `didChangeDependencies()`, use `addPostFrameCallback` to prevent "setState() called during build" errors:
+```dart
+@override
+void didChangeDependencies() {
+  super.didChangeDependencies();
+  if (!_isInitialized) {
+    _isInitialized = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        final gameState = context.read<GameState>();
+        gameState.newGame();
+      }
+    });
+  }
+}
+```
+
+### Settings-aware animations
+Animation durations should read from `SettingsService.instance` to respect user preferences:
+```dart
+final dropDuration = SettingsService.instance.dropDuration;
+_dropController?.duration = Duration(milliseconds: dropDuration);
+```
+
 ## Production Deployment
 
 Replace test IDs before release:
 - `ad_service.dart`: AdMob ad unit IDs
 - `AndroidManifest.xml`: AdMob app ID
 - `iap_service.dart`: IAP product IDs
+
+## Missing Assets
+
+BGM files need to be added manually:
+- `assets/audio/bgm.mp3` (mobile)
+- `web/assets/audio/bgm.wav` (web)
